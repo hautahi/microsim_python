@@ -59,11 +59,13 @@ class CPerson:
 
         self.female = 1 if self.sex == 2 else 0
         self.male = 0 if self.sex == 2 else 1
+
         self.lths = 1 if self.schl <= 15 else 0
         self.somecol = 1 if 18 <= self.schl <= 20 else 0
         self.ba = 1 if self.schl == 21 else 0
         self.maplus = 1 if self.schl >= 22 else 0
         self.colgrad = 1 if self.schl >= 21 else 0
+
         self.married = 1 if self.mar == 1 else 0
         self.widowed = 1 if self.mar == 2 else 0
         self.divorced = 1 if self.mar == 3 else 0
@@ -84,3 +86,5 @@ class CPerson:
             self.asian = 1
         elif self.rac1p != 1:
             self.otherr = 1
+
+        self.hiemp = 1 if self.hins1 == 1 else 0

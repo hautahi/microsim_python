@@ -25,10 +25,11 @@ class Simulator:
                     no_leaves_account = None
                     for i in range(settings.clone_factor):
                         wage = Wage(person, random.random(), random.random(), settings)
+                        wage.set_employer_size(random.random(), settings)
                         pr_hourly = wage.pr_hourly(settings)
                         wage.hourly = random.random < pr_hourly
 
-                        account = Account(person, wage, weight)
+                        account = Account(person, wage, weight, settings)
 
     def filter_requirements(self, person):
         settings = self.settings

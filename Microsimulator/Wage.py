@@ -171,6 +171,9 @@ class Wage:
 
         self.hourly = False
 
+        self.size_cat = 0
+        self.num_employees = 0
+
     def get_weeks_worked(self, uniform, settings):
         person = self.person
         female = person.female
@@ -237,21 +240,11 @@ class Wage:
     def set_num_employers(self, uniform, settings):
         person = self.person
 
-        lths = 0
-        somecol = 0
-        ba = 0
-        maplus = 0
-
-        if person.schl <=15:
-            lths = 1
-        elif 18 <= person.schl <= 20:
-            somecol = 1
-        elif person.schl == 21:
-            ba = 1
-        elif person.schl >= 22:
-            maplus = 1
-
-        hiemp = 1 if person.hins1 == 1 else 0
+        lths = person.lths
+        somecol = person.somecol
+        ba = person.ba
+        maplus = person.maplus
+        hiemp = person.hiemp
         cut = [-2990352, 1.433113]
 
         bx = -.0652556 * person.age + .0004115 * person.age ** 2 - .42671 * person.asian - \
@@ -292,3 +285,49 @@ class Wage:
 
         e = np.exp(bx)
         return e / (1 + e)
+
+    def set_employer_size(self, uniform1, settings):
+        person = self.person
+
+        female = person.female
+        lnearn = person.lnearn
+        blacknh = person.blacknh
+        hispanic = person.hispanic
+        asian = person.asian
+        otherr = person.otherr
+        age = person.age
+        agesq = age ** 2
+
+        lths = person.lths
+        somecol = person.somecol
+        ba = person.ba
+        maplus = person.maplus
+        hiemp = person.hiemp
+
+        size_cat = 0
+        num_employees = 0
+
+        bx = -.6182106 - .018312 * age + .5435623 * blacknh - .1784881 * lths + .0461504 * somecol + .0431483 * ba + \
+             .0998634 * maplus + .2284372 * lnearn + .4681369 * hiemp - 2.013904 * self.vmajind[1] - \
+             1.456223 * self.vmajind[3] - .2249696 * self.vmajind[5] - .2215996 * self.vmajind[6] - \
+             .3956034 * self.vmajind[8] - 1.031341 * self.vmajind[9] - .4637155 * self.vmajind[11] - \
+             1.838622 * self.vmajind[12] + 1.078739 * self.vmajind[13] - .3426925 * self.vmajocc[1] - \
+             .4424592 * self.vmajocc[3] - .3775894 * self.vmajocc[4] - .520554 * self.vmajocc[7]
+
+        prob = np.exp(bx) / (1 + np.exp(bx))
+
+        if uniform1 < prob:
+            cut = [-1.538165, -.2119441, .1534289]
+            bx = -.0031871 * age + .3443047 * blacknh + .2150592 * asian + .3338452 * otherr - .2515116 * lths + \
+                 .0688901 * ba + .1918942 * maplus + .0330519 * lnearn + .1829315 * hiemp - \
+                 .3436195 * self.vmajind[1] - .6289225 * self.vmajind[3] + .3339817 * self.vmajind[5] + \
+                 .3268252 * self.vmajind[6] + .1384174 * self.vmajind[8] - .3453498 * self.vmajind[9] + \
+                 .2640143 * self.vmajind[11] - .4601113 * self.vmajind[12] + .9410239 * self.vmajind[13] + \
+                 .1729759 * self.vmajocc[1] + .3053381 * self.vmajocc[2] + .4999731 * self.vmajocc[4] + \
+                 .1659095 * self.vmajocc[5] - .5689651 * self.vmajocc[6] - .2406926 * self.vmajocc[7] - \
+                 .2386636 * self.vmajocc[9]
+
+            size_cat = 2 + self.get_cutoff(uniform1, cut, bx)
+
+            if size_cat == 3:
+                pass

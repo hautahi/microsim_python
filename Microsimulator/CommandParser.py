@@ -410,11 +410,11 @@ class CommandParser:
 
     def process_formula2(self, options):
         options = self.parse_cmd_options(options, 'FORMULA2')
-        if self.settings.bformula:
+        if self.settings.formula:
             self.settings.log_error('Command Error: FORMULA2 command cannot be present if FORMULA command is "Yes"')
 
         settings = self.settings
-        settings.bformula2 = True
+        settings.formula2 = True
 
         while len(options) > 0:
             split_options = options.split('=', 1)

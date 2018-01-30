@@ -41,11 +41,14 @@ from StaticObj import StaticObj, increment
 # reg.fit([[2], [3], [1]], [1, 1, -1])
 # print(reg.coef_, reg.intercept_)
 
-print(StaticObj.val)
-increment()
-print(StaticObj.val)
-StaticObj.val = 'asd'
-print(StaticObj.val)
-editSettings()
-print(StaticObj.val)
+# print(StaticObj.val)
+# increment()
+# print(StaticObj.val)
+# StaticObj.val = 'asd'
+# print(StaticObj.val)
+# editSettings()
+# print(StaticObj.val)
 
+df = pd.read_csv('parameters/length ILL CHILD men 2.txt', sep='\t')
+df.columns = ['num', 'prob']
+print(df)

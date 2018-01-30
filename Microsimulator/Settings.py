@@ -46,9 +46,9 @@ class Settings:
         self.extend_old = False
 
         self.fmla_constraint = False
-        self.bformula = False
-        self.f_rates = []
-        self.f_cutoffs = []
+        self.formula = False
+        self.f_rates = []  # Called '_rates' in original
+        self.f_cutoffs = []  # Called '_brackets' in original
 
         self.government = True
         self.leave_probability_factors = leave_reasons.copy()
@@ -81,3 +81,6 @@ class Settings:
         self.log.write(message)
         self.log.close()
         exit()
+
+    def load_distributions(self):
+        pass
