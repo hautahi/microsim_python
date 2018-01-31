@@ -180,7 +180,7 @@ class Wage:
         lnearn = person.lnearn
         blacknh = person.blacknh
         hispanic = person.hispanic
-        age = person.age
+        age = person.agep
         agesq = age ** 2
 
         fem_cu6 = 1 if person.paoc == 1 else 0
@@ -247,7 +247,7 @@ class Wage:
         hiemp = person.hiemp
         cut = [-2990352, 1.433113]
 
-        bx = -.0652556 * person.age + .0004115 * person.age ** 2 - .42671 * person.asian - \
+        bx = -.0652556 * person.agep + .0004115 * person.agep ** 2 - .42671 * person.asian - \
              .2174653 * person.hispanic - .2763925 * lths + .2760745 * somecol + .3875605 * ba + .3990029 * maplus - \
              .053062 * person.lnearn - .1941105 * hiemp - .2953034 * self.ind4 - .2244062 * self.ind5 - \
              .2785901 * self.ind6 - .244895 * self.ind8 - .2430498 * self.ind13 - .1379493 * self.occ1 + \
@@ -277,8 +277,8 @@ class Wage:
 
     def pr_hourly(self, settings):
         person = self.person
-        bx = 3.443597 + .5250494 * person.female + .3448871 * person.blacknh - .1509796 * person.age + \
-             .0015093 * person.age ** 2 - .9514732 * person.ba - 1.590943 * person.maplus - .8849493 * self.occ1 + \
+        bx = 3.443597 + .5250494 * person.female + .3448871 * person.blacknh - .1509796 * person.agep + \
+             .0015093 * person.agep ** 2 - .9514732 * person.ba - 1.590943 * person.maplus - .8849493 * self.occ1 + \
              .8880488 * self.occ3 + .5734125 * self.occ5 + 1.242109 * self.occ7 + 1.019219 * self.occ8 + \
              1.678 * self.occ9 + 1.079526 * self.occ10 + .3391169 * self.ind5 - .302905 * self.ind8 + \
              .4234983 * self.ind11 - .6188567 * self.ind12
@@ -286,16 +286,20 @@ class Wage:
         e = np.exp(bx)
         return e / (1 + e)
 
-    def set_employer_size(self, uniform1, settings):
+    def set_employer_size(self, uniform1, uniform2, uniform3, settings):
         person = self.person
+
+        if person.cow == 6 or person.cow == 7:
+            self.size_cat = 4
+            self.num_employees = 100
+            return
 
         female = person.female
         lnearn = person.lnearn
         blacknh = person.blacknh
-        hispanic = person.hispanic
         asian = person.asian
         otherr = person.otherr
-        age = person.age
+        age = person.agep
         agesq = age ** 2
 
         lths = person.lths
@@ -303,9 +307,6 @@ class Wage:
         ba = person.ba
         maplus = person.maplus
         hiemp = person.hiemp
-
-        size_cat = 0
-        num_employees = 0
 
         bx = -.6182106 - .018312 * age + .5435623 * blacknh - .1784881 * lths + .0461504 * somecol + .0431483 * ba + \
              .0998634 * maplus + .2284372 * lnearn + .4681369 * hiemp - 2.013904 * self.vmajind[1] - \
@@ -330,4 +331,35 @@ class Wage:
             size_cat = 2 + self.get_cutoff(uniform1, cut, bx)
 
             if size_cat == 3:
-                pass
+                num_employees = self.search_dataframe(settings.prdist_50_99, uniform3)
+            elif size_cat == 4:
+                num_employees = self.search_dataframe(settings.prdist_100_499, uniform3)
+            else:
+                num_employees = 500
+        else:
+            bx = -1.341805 + .1251921 * female - .0551435 * age + .0003642 * agesq + .1702367 * blacknh - \
+                 .4366737 * asian - .2308046 * maplus + .2750079 * lnearn + .1728651 * hiemp - \
+                 1.400378 * self.vmajind[1] - .4573153 * self.vmajind[3] + .5104981 * self.vmajind[4] - \
+                 .2044464 * self.vmajind[8] - .4322618 * self.vmajind[9] + .4315128 * self.vmajind[11] - \
+                 .8847405 * self.vmajind[12] + .7056455 * self.vmajind[13] - .3271482 * self.vmajocc[1] - \
+                 .3128975 * self.vmajocc[4] + .2669859 * self.vmajocc[5] + .4668146 * self.vmajocc[6] - \
+                 .2572298 * self.vmajocc[7] + .3415652 * self.vmajocc[10]
+
+            prob = np.exp(bx) / (1 + np.exp(bx))
+
+            if uniform2 < prob:
+                size_cat = 2
+                num_employees = self.search_dataframe(settings.prdist_10_49, uniform3)
+            else:
+                size_cat = 1
+                num_employees = self.search_dataframe(settings.prdist_u10, uniform3)
+
+        self.size_cat = size_cat
+        self.num_employees = num_employees
+
+    @staticmethod
+    def search_dataframe(df, uniform):
+        for i, prob in enumerate(df['prob']):
+            if uniform <= prob:
+                return df['num'][i]
+        return df['num'][len(df['num'])]

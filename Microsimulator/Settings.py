@@ -1,4 +1,5 @@
 import pathlib
+import pandas as pd
 
 
 class Settings:
@@ -31,6 +32,8 @@ class Settings:
         self.annual_hours_threshold = None
         self.employer_size_threshold = None
         self.eligibility_expression = 'All'
+
+        self.leave_types = ['Own Health', 'Maternity', 'New Child', 'Ill Child', 'Ill Spouse', 'Ill Parent']
 
         leave_reasons = {'Own Health': 1,
                          'Maternity': 1,
@@ -69,6 +72,22 @@ class Settings:
         self.n_years = 1.0
         self.seed = None
 
+        self.lol_own_health_noprog = self.load_distributions("length OWN HEALTH 2 noprog.txt")
+        self.lol_own_health_prog = self.load_distributions("length OWN HEALTH 2 prog.txt")
+        self.lol_maternity_disability = self.load_distributions("length MATERNITY-DISABILITY 3.txt")
+        self.lol_new_child_men = self.load_distributions("length NEW CHILD men 2.txt")
+        self.lol_new_child_women = self.load_distributions("length NEW CHILD women 2.txt")
+        self.lol_ill_child_men = self.load_distributions("length ILL CHILD men 2.txt")
+        self.lol_ill_child_women = self.load_distributions("length ILL CHILD women 2.txt")
+        self.lol_ill_spouse_men = self.load_distributions("length ILL SPOUSE men 2.txt")
+        self.lol_ill_spouse_women = self.load_distributions("length ILL SPOUSE women 2.txt")
+        self.lol_ill_parent_men = self.load_distributions("length ILL PARENT men 2.txt")
+        self.lol_ill_parent_women = self.load_distributions("length ILL PARENT women 2.txt")
+        self.prdist_u10 = self.load_distributions("Prob Employer Size lt10.txt")
+        self.prdist_10_49 = self.load_distributions("Prob Employer Size 10-49.txt")
+        self.prdist_50_99 = self.load_distributions("Prob Employer Size 50-99.txt")
+        self.prdist_100_499 = self.load_distributions("Prob Employer Size 100-499.txt")
+
     def set_up_directories(self):
         # Create folders for input, output, and parameter files
         pathlib.Path(self.INPUT_FOLDER).mkdir(parents=True, exist_ok=True)
@@ -82,5 +101,7 @@ class Settings:
         self.log.close()
         exit()
 
-    def load_distributions(self):
-        pass
+    def load_distributions(self, file_location):
+        df = pd.read_csv(self.PARAMS_FOLDER + file_location, sep='\t')
+        df.columns = ['num', 'prob']
+        return df
