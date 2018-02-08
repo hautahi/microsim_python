@@ -5,6 +5,7 @@ from Calender import Calender
 import random
 import datetime
 import numpy as np
+import math
 
 
 class Simulator:
@@ -32,7 +33,7 @@ class Simulator:
                     no_leaves_account = None
                     for i in range(settings.clone_factor):
                         wage = Wage(person, random.random(), random.random(), settings)
-                        wage.set_employer_size(random.random(), settings)
+                        wage.set_employer_size(random.random(), random.random(), random.random(), settings)
                         pr_hourly = wage.pr_hourly(settings)
                         wage.hourly = random.random < pr_hourly
 
@@ -80,18 +81,7 @@ class Simulator:
         leave_number = 0
         need_number = 0
 
-        uniform_draw = random.random()
-        cum_prob_of_leave = 0
-        most_recent_leave_type = 'Own Health'
-        any_leave = False
-
-        for leave_type in settings.leavetype:
-            pr_leave = self.pr_take(leave_type, account)
-            cum_prob_of_leave += pr_leave
-            if cum_prob_of_leave > uniform_draw:
-                most_recent_leave_type = leave_type
-                any_leave = True
-                break
+        most_recent_leave_type, any_leave = self.any_leave_taken(account)
 
         if any_leave:
             maternity = True if most_recent_leave_type == 'Maternity' or most_recent_leave_type == 'New Child' \
@@ -176,11 +166,12 @@ class Simulator:
 
                 elig = self.eligible_doctor_hospital(leave_type, account, doc, hos) and account.employerWorkerElig
                 len_uniform = random.random()
-                length = self.ran_discrete_cum(leave_type, uniform=len_uniform)
+                len_leave = self.length_of_leave(leave_type, account)
+                length = self.ran_discrete_cum(len_leave, uniform=len_uniform)
                 if length <= 0:
                     settings.log_error('Error: Length of leave is not positive.')
 
-                leaves.append(most_recent_leave_type)
+                leaves.append(leave_type)
                 leave_num.append(leave_number)
                 need_num.append(need_number)
                 take.append(True)
@@ -251,8 +242,111 @@ class Simulator:
                 for leave_type in this_leaves:
                     leave_number += 1
                     need_number += 1
+
+                    pr_doctor = self.pr_doctor_need(leave_type)
+                    if random.random() < pr_doctor:
+                        doc = True
+                        pr_hospital = self.pr_hospital_need(leave_type)
+                        hos = random.random() < pr_hospital
+                    else:
+                        doc, hos = False
+
+                    elig = self.eligible_doctor_hospital(leave_type, account, doc, hos) and account.employerWorkerElig
+                    pr_take_given_prog = self.pr_take_given_prog(leave_type, account)
+
+                    if random.random() < pr_take_given_prog and settings.cap:
+                        if elig:
+                            len_uniform = random.random()
+                            len_leave = self.length_of_leave(leave_type, account)
+                            length = self.ran_discrete_cum(len_leave, uniform=len_uniform)
+                            prog_max = settings.max_weeks[leave_type] * 5
+                            if length <= 0:
+                                settings.log_error('Error: Length of leave is not positive.')
+                            elif length > prog_max:
+                                length = prog_max
+
+                            l_len_noprog.append(length)
+                            uni_draw.append(len_uniform)
+
+                            if length > settings.waiting_period[leave_type] * 5:
+                                take.append(True)
+                                l_len_prog.append(length)
+                                reason_taken_back.append(0)
+                            else:
+                                take.append(False)
+                                l_len_prog.append(0)
+                                reason_taken_back.append(1)
+                        else:
+                            take.append(False)
+                            l_len_prog.append(0)
+                            l_len_noprog.append(0)
+                            uni_draw.append(0)
+                            reason_taken_back.append(0)
+                    else:
+                        take.append(False)
+                        l_len_prog.append(0)
+                        l_len_noprog.append(0)
+                        uni_draw.append(0)
+                        reason_taken_back.append(0)
+
                     leave_num.append(leave_number)
                     need_num.append(need_number)
+                    doctor.append(doc)
+                    hospital.append(hos)
+                    leaves.append(leave_type)
+                    eligible.append(elig)
+
+        max_length = 0
+        n_leaves = 0
+        n_need_wo_prog = 0
+        n_need = 0
+
+        for i in range(len(take)):
+            length = l_len_noprog[i] + l_len_prog[i]
+            l_len.append(length)
+            if length > max_length:
+                max_length = length
+            if take[i]:
+                if length <= 0:
+                    settings.log_error('Error: Leave length for taker is not positive')
+                n_leaves += 1
+                if l_len_noprog[i] == 0:
+                    n_need_wo_prog += 1
+            else:
+                if length != 0:
+                    settings.log_error('Error: Leave length for non-taker is not 0')
+                n_need += 1
+                n_need_wo_prog += 1
+
+        account.n_leaves = n_leaves
+        account.n_need_wo_prog = n_need_wo_prog
+        account.n_need = n_need
+
+        if n_leaves > 0:
+            leaves_info = [[0] for _ in range(5)] * n_leaves
+            j = 0
+            for i, length in enumerate(l_len):
+                if length > 0:
+                    leaves_info[j][5] = i
+                    leaves_info[j][1] = length
+                    j += 1
+
+            no_overlap = self.assign_leaves(leaves_info, account, calender)
+            account.dates_ok = no_overlap
+
+            for row in leaves_info:
+                pos = row[4]
+                leave = account.new_leave(leaves[pos], row[0])
+                leave.leave_num = leave_num[pos]
+                leave.need_num = need_num[pos]
+                leave.begin = row[1]
+                leave.end = row[2]
+                if row[3] == 1:
+                    leave.truncated = True
+                length = l_len_noprog[pos]
+                leave.length_no_prog = length
+                leave.unifrom_draw_leave_length = uni_draw[pos]
+                leave.end_no_prog = 
 
     def pr_take(self, leave_type, account):
         settings = self.settings
@@ -561,11 +655,24 @@ class Simulator:
         else:
             self.settings.log_error('Invalid leave type')
 
+    def any_leave_taken(self, account):
+        settings = self.settings
+        uniform_draw = random.random()
+        cum_prob_of_leave = 0
+
+        for leave_type in settings.leavetype:
+            pr_leave = self.pr_take(leave_type, account)
+            cum_prob_of_leave += pr_leave
+
+            if cum_prob_of_leave > uniform_draw:
+                return leave_type, True
+
+        return None, False
+
     def any_leave_needed(self, account):
         settings = self.settings
         uniform = random.random()
         cum_prob_of_leave = 0
-        most_recent_leave_type = None
 
         for leave_type in settings.leave_types:
             pr_leave = self.pr_need(leave_type, account)
@@ -574,9 +681,10 @@ class Simulator:
             if cum_prob_of_leave >= uniform:
                 return leave_type, True
 
+        return None, False
+
     def pr_need(self, leave_type, account):
         person = account.person
-        wage = account.wage
         calibrate = self.settings.calibrate
 
         bx = 0
@@ -626,9 +734,7 @@ class Simulator:
 
     def pr_need_given_leave(self, leave_type, account):
         person = account.person
-        wage = account.wage
 
-        bx = 0
         if leave_type == 'Own Health':
             return 0
 
@@ -694,3 +800,165 @@ class Simulator:
 
         else:
             self.settings.log_error('Invalid leave type')
+
+    def pr_doctor_need(self, leave_type):
+        if leave_type == 'Own Health':
+            return .8808665
+
+        elif leave_type == 'Maternity':
+            return .9561921
+
+        elif leave_type == 'New Child':
+            return .3346132
+
+        elif leave_type == 'Ill Child':
+            return .9716478
+
+        elif leave_type == 'Ill Spouse':
+            return .9663462
+
+        elif leave_type == 'Ill Parent':
+            return .9902155
+
+        else:
+            self.settings.log_error('Invalid leave type')
+
+    def pr_hospital_need(self, leave_type):
+        if leave_type == 'Own Health':
+            return .1679876
+
+        elif leave_type == 'Maternity':
+            return .3536807
+
+        elif leave_type == 'New Child':
+            return .4767099
+
+        elif leave_type == 'Ill Child':
+            return .570265
+
+        elif leave_type == 'Ill Spouse':
+            return .5660124
+
+        elif leave_type == 'Ill Parent':
+            return .8519646
+
+        else:
+            self.settings.log_error('Invalid leave type')
+
+    def pr_take_given_prog(self, leave_type, account):
+        person = account.person
+
+        bx = 0
+        if leave_type == 'Own Health':
+            bx = 2.987098 - .8360153 * person.lnfaminc
+
+        elif leave_type == 'Maternity':
+            return .4236814
+
+        elif leave_type == 'New Child':
+            return .2997617
+
+        elif leave_type == 'Ill Child':
+            bx = 4.124997 - 1.272222 * person.lnfaminc
+
+        elif leave_type == 'Ill Spouse':
+            return .361724
+
+        elif leave_type == 'Ill Parent':
+            bx = 4.14044 - 1.207769 * person.lnfaminc
+
+        else:
+            self.settings.log_error('Invalid leave type')
+
+        prob = np.exp(bx) / (1 + np.exp(bx))
+        return prob
+
+    def pr_unfinished(self, length):
+        ln_len = math.log(length)
+        ln_len_sq = ln_len ** 2
+        bx = -2.010323 - .2502718 * ln_len + .0939005 * ln_len_sq
+
+        prob = math.exp(bx) / (1 - math.exp(bx))
+        num_leaves = 1.842856 - .2728155 * ln_len + .0309899 * ln_len_sq
+
+        return prob / num_leaves
+
+    def assign_leaves(self, leaves_info, account, calender):
+        no_overlap = True
+        mask_beg = []
+        mask_end = []
+
+        settings = self.settings
+        unfinished_inventory = calender.unfinished_inventory
+        n_days = calender.n_days
+        end_day_dist = calender.end_day_dist
+
+        any_unfinished = False
+        row_unfinished = None
+
+        for row in leaves_info:
+            length = row[0]
+            if not any_unfinished and unfinished_inventory[length - 1] > 0:
+                unfinished_inventory[length - 1] -= 1
+                any_unfinished = True
+                row_unfinished = row
+                row[3] = 1
+            pr_unfinished = self.pr_unfinished(length)
+            if random.random() < pr_unfinished:
+                if not any_unfinished:
+                    any_unfinished = True
+                    row_unfinished = row
+                else:
+                    unfinished_inventory[length - 1] += 1
+
+        if any_unfinished:
+            end_day = n_days
+            beg_day = n_days - row_unfinished[0] + 1
+            mask_beg.append(beg_day)
+            mask_end.append(end_day)
+            date_beg = calender.weekdays_after(beg_day - 1)
+            date_end = calender.weekdays_after(end_day - 1)
+            row_unfinished[1] = date_beg  # TODO: Convert this from date to number of days since 01/01/1960
+            row_unfinished[2] = date_end
+
+            if len(leaves_info) == 1:
+                return True
+
+        ev = sum(end_day_dist) / n_days
+        p_weight = [0] * n_days
+
+        for i in range(len(n_days)):
+            w = ev / end_day_dist[i]
+            p_weight[i] = 2 * w if w >= 1 else w / 2
+
+        for row in leaves_info:
+            if row[3] == 0:
+                length = row[0]
+                for i in range(len(mask_beg)):
+                    extend_end = mask_end[i] + length - 1
+                    for j in range(mask_beg[i], extend_end + 1):
+                        if j >= 0 and j <= n_days:
+                            p_weight[j] = 1
+
+                    denom = sum(p_weight)
+                    end_day = 1
+
+                    if denom > 0:
+                        p_weight[:] = [w / denom for w in p_weight]
+                        end_day = self.ran_discrete(p_weight)
+                    else:
+                        uniform = random.random()
+                        end_day = int(uniform * n_days) + 1
+                        if (end_day > n_days):
+                            end_day = n_days
+                            no_overlap = False
+                    beg_day = end_day - length + 1
+                    mask_beg.append(beg_day)
+                    mask_end.append(end_day)
+                    date_beg = calender.weekdays_after(beg_day - 1)
+                    date_end = calender.weekdays_after(end_day - 1)
+                    row_unfinished[1] = date_beg
+                    row_unfinished[2] = date_end
+                    end_day_dist[end_day - 1] += account.weight
+
+        return no_overlap

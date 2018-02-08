@@ -1,4 +1,5 @@
 import datetime
+import random
 
 
 class Calender:
@@ -27,4 +28,17 @@ class Calender:
         # If the day is Sunday, move back two days
         elif date.weekday == 6:
             date -= datetime.timedelta(days=2)
+        return date
+
+    def weekdays_after(self, num):
+        date = self.first_date
+        date = self.advance_to_weekday(date)
+
+        n_days = int(num / 5) * 7  # Convert weekdays to full weeks. 5 weekdays = 1 week = 7 days
+        remainder = num % 5  # Get remainder of days not converted
+        if date.weekday + remainder > 4:
+            remainder += 2
+
+        date += datetime.timedelta(days=n_days+remainder)
+        self.first_date = date
         return date

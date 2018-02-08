@@ -1,3 +1,5 @@
+from Leave import Leave
+
 class Account:
     def __init__(self, person, wage, weight, settings):
         self.person = person
@@ -53,3 +55,8 @@ class Account:
         return min(wage_part, settings.cap)
 
         # Log to debug here
+
+    def new_leave(self, leave_type, length):
+        leave = Leave(leave_type, length)
+        self.leaves.append(leave)
+        return leave
