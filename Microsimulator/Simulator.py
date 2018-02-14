@@ -1,7 +1,9 @@
 from CommandParser import CommandParser
 from Wage import Wage
 from Account import Account
-from Calender import Calender
+import Calender
+import Param
+from Settings import Settings
 import random
 import datetime
 import numpy as np
@@ -10,48 +12,44 @@ import math
 
 class Simulator:
     def __init__(self):
-        self.settings = None
+        pass
 
     def simulate(self):
         command_parser = CommandParser()
-        settings = command_parser.execute('commands.txt')
-        self.settings = settings
+        command_parser.execute('commands.txt')
 
-        begin = datetime.datetime.strptime('4/16/2011', '%m/%d/%Y').date()
-        end = datetime.datetime.strptime('4/15/2012', '%m/%d/%Y').date()
-        calender = Calender(begin, end, 1080)
+        calender = Calender.Calender(Settings.calender_begin, Settings.calender_end, 1080)
         households = command_parser.generate_households()
 
         for hh in households:
             for person in hh.people:
                 if self.filter_requirements(person):
                     n_none = 0
-                    weight = person.pwgtp * settings.n_years
-                    if settings.seanalysis:
-                        weight /= settings.clone_factor
+                    weight = person.pwgtp * Settings.n_years
+                    if Settings.seanalysis:
+                        weight /= Settings.clone_factor
 
                     no_leaves_account = None
-                    for i in range(settings.clone_factor):
-                        wage = Wage(person, random.random(), random.random(), settings)
-                        wage.set_employer_size(random.random(), random.random(), random.random(), settings)
-                        pr_hourly = wage.pr_hourly(settings)
+                    for i in range(Settings.clone_factor):
+                        wage = Wage(person, random.random(), random.random())
+                        wage.set_employer_size(random.random(), random.random(), random.random())
+                        pr_hourly = wage.pr_hourly()
                         wage.hourly = random.random < pr_hourly
 
-                        account = Account(person, wage, weight, settings)
+                        account = Account(person, wage, weight)
 
     def filter_requirements(self, person):
-        settings = self.settings
-        if not settings.government and 2 < person.cow < 6:
+        if not Settings.government and 2 < person.cow < 6:
             return False
-        if not settings.government and (person.cow == 6 or person.cow == 7):
+        if not Settings.government and (person.cow == 6 or person.cow == 7):
             return False
         if person.esr == 4 or person.esr == 7:
             return False
         if person.agep >= 15 and person.wkw >= 1 and 1 <= person.cow <= 7:
-            if not settings.stateofwork:
+            if not Settings.stateofwork:
                 return True
-            elif (person.st == settings.stateofwork and person.powsp05 <= 0 and person.powsp12 <= 0) or \
-                    person.powsp05 == settings.stateofwork or person.powsp12 == settings.stateofwork:
+            elif (person.st == Settings.stateofwork and person.powsp05 <= 0 and person.powsp12 <= 0) or \
+                    person.powsp05 == Settings.stateofwork or person.powsp12 == Settings.stateofwork:
                 return True
             else:
                 return False
@@ -59,11 +57,21 @@ class Simulator:
             return False
 
     def process_person(self, account, calender):
-        settings = self.settings
-        self.set_leaves(account, calender)
+        any_leaves = self.set_leaves(account, calender)
+
+        benefit = 0
+        leaves = account.leaves
+        for leave in leaves:
+            if leave.length > 0:
+                paid = False
+                if leave.length_no_prog > 0:
+                    pr_paid = self.pr_paid_leave(leave, account)
+                    paid = random.random() < pr_paid
+                leave.paid = paid
+
+                this_benefit = bene
 
     def set_leaves(self, account, calender):
-        settings = self.settings
 
         leaves = []
         leave_num = []
@@ -92,17 +100,17 @@ class Simulator:
             num_leaves = 1
             pr_multiple = self.pr_multiple_leaves(most_recent_leave_type, account)
             if random.random() < pr_multiple:
-                num_leaves = self.ran_discrete(self.pr_dist_multiple_leaves(most_recent_leave_type))
+                num_leaves = Param.ran_discrete(self.pr_dist_multiple_leaves(most_recent_leave_type))
 
             if num_leaves > 1:
                 prior_type = most_recent_leave_type
-                take_dist_uncond = {lt: 0 for lt in settings.leave_types}
+                take_dist_uncond = {lt: 0 for lt in Settings.leave_types}
 
                 for leave_type in take_dist_uncond:
                     take_dist_uncond[leave_type] = self.pr_take(leave_type, account)
 
                 for i in range(num_leaves):
-                    pr_take_this = {lt: 0 for lt in settings.leave_types}
+                    pr_take_this = {lt: 0 for lt in Settings.leave_types}
                     mask = []
                     remain_prob = 1
                     prob_unmasked = 0
@@ -127,7 +135,7 @@ class Simulator:
                             mask.append(True)
 
                     factor = remain_prob / prob_unmasked if prob_unmasked > 0 else 1
-                    for idx, leave_type in enumerate(settings.leave_types):
+                    for idx, leave_type in enumerate(Settings.leave_types):
                         if mask[idx]:
                             pr_take_this[leave_type] = take_dist_uncond[leave_type] * factor
 
@@ -167,9 +175,9 @@ class Simulator:
                 elig = self.eligible_doctor_hospital(leave_type, account, doc, hos) and account.employerWorkerElig
                 len_uniform = random.random()
                 len_leave = self.length_of_leave(leave_type, account)
-                length = self.ran_discrete_cum(len_leave, uniform=len_uniform)
+                length = Param.ran_discrete_cum(len_leave, uniform=len_uniform)
                 if length <= 0:
-                    settings.log_error('Error: Length of leave is not positive.')
+                    Settings.log_error('Error: Length of leave is not positive.')
 
                 leaves.append(leave_type)
                 leave_num.append(leave_number)
@@ -190,19 +198,19 @@ class Simulator:
             num_leaves = 1
             pr_multiple = self.pr_multiple_needs(most_recent_leave_type)
             if random.random() < pr_multiple:
-                num_leaves = self.ran_discrete(self.pr_dist_multiple_needs(most_recent_leave_type))
+                num_leaves = Param.ran_discrete(self.pr_dist_multiple_needs(most_recent_leave_type))
 
             this_leaves = [most_recent_leave_type]
 
             if num_leaves > 1:
                 prior_type = most_recent_leave_type
-                need_dist_uncond = {lt: 0 for lt in settings.leave_types}
+                need_dist_uncond = {lt: 0 for lt in Settings.leave_types}
 
                 for leave_type in need_dist_uncond:
                     need_dist_uncond[leave_type] = self.pr_need(leave_type, account)
 
                 for i in range(num_leaves):
-                    pr_take_this = {lt: 0 for lt in settings.leave_types}
+                    pr_take_this = {lt: 0 for lt in Settings.leave_types}
                     mask = []
                     remain_prob = 1
                     prob_unmasked = 0
@@ -216,7 +224,7 @@ class Simulator:
                             mask.append(True)
 
                     factor = remain_prob / prob_unmasked if prob_unmasked > 0 else 1
-                    for idx, leave_type in enumerate(settings.leave_types):
+                    for idx, leave_type in enumerate(Settings.leave_types):
                         if mask[idx]:
                             pr_take_this[leave_type] = need_dist_uncond[leave_type] * factor
 
@@ -254,21 +262,21 @@ class Simulator:
                     elig = self.eligible_doctor_hospital(leave_type, account, doc, hos) and account.employerWorkerElig
                     pr_take_given_prog = self.pr_take_given_prog(leave_type, account)
 
-                    if random.random() < pr_take_given_prog and settings.cap:
+                    if random.random() < pr_take_given_prog and Settings.cap:
                         if elig:
                             len_uniform = random.random()
                             len_leave = self.length_of_leave(leave_type, account)
-                            length = self.ran_discrete_cum(len_leave, uniform=len_uniform)
-                            prog_max = settings.max_weeks[leave_type] * 5
+                            length = Param.ran_discrete_cum(len_leave, uniform=len_uniform)
+                            prog_max = Settings.max_weeks[leave_type] * 5
                             if length <= 0:
-                                settings.log_error('Error: Length of leave is not positive.')
+                                Settings.log_error('Error: Length of leave is not positive.')
                             elif length > prog_max:
                                 length = prog_max
 
                             l_len_noprog.append(length)
                             uni_draw.append(len_uniform)
 
-                            if length > settings.waiting_period[leave_type] * 5:
+                            if length > Settings.waiting_period[leave_type] * 5:
                                 take.append(True)
                                 l_len_prog.append(length)
                                 reason_taken_back.append(0)
@@ -308,13 +316,13 @@ class Simulator:
                 max_length = length
             if take[i]:
                 if length <= 0:
-                    settings.log_error('Error: Leave length for taker is not positive')
+                    Settings.log_error('Error: Leave length for taker is not positive')
                 n_leaves += 1
                 if l_len_noprog[i] == 0:
                     n_need_wo_prog += 1
             else:
                 if length != 0:
-                    settings.log_error('Error: Leave length for non-taker is not 0')
+                    Settings.log_error('Error: Leave length for non-taker is not 0')
                 n_need += 1
                 n_need_wo_prog += 1
 
@@ -346,10 +354,32 @@ class Simulator:
                 length = l_len_noprog[pos]
                 leave.length_no_prog = length
                 leave.unifrom_draw_leave_length = uni_draw[pos]
-                leave.end_no_prog = 
+                leave.end_no_prog = calender.weekdays_after(leave.begin, length - 1)
+                leave.need = False
+                leave.doctor = doctor[pos]
+                leave.hospital = hospital[pos]
+                leave.eligible = eligible[pos]
+                leave.reason_taken_back = 0
+
+        for i in range(len(take)):
+            if not take[i]:
+                leave = account.new_leave(leaves[i], 0)
+                leave.leave_num = leave_num[i]
+                leave.need_num = need_num[i]
+                leave.begin = 0
+                leave.end = 0
+                leave.truncated = False
+                leave.doctor = doctor[i]
+                leave.hospital = hospital[i]
+                leave.eligible = eligible[i]
+                leave.need = True
+                leave.length_no_prog = 0
+                leave.end_no_prog = 0
+                leave.reason_taken_back = reason_taken_back[i]
+
+        return len(leaves) > 0
 
     def pr_take(self, leave_type, account):
-        settings = self.settings
         person = account.person
         wage = account.wage
 
@@ -357,49 +387,49 @@ class Simulator:
 
         bx = 0
         if leave_type == 'Own Health':
-            delta = .119783 if settings.calibrate else 0
+            delta = .119783 if Settings.calibrate else 0
             bx = delta - 3.664033 + .0149854 * person.agep + .4782719 * wage.hourly + .3684891 * person.divorced \
-                 + .7569287 * account.employerWorkerEligFMLA
+                 + .7569287 * account.employer_worker_elig_fmla
             prob = np.exp(bx) / (1 + np.exp(bx))
-            bx = prob * settings.leave_probability_factors[leave_type]
+            bx = prob * Settings.leave_probability_factors[leave_type]
 
         elif leave_type == 'Maternity':
             if person.female == 0 or num_children == 0:
                 return 0
             else:
-                delta = .004768 if settings.calibrate else 0
+                delta = .004768 if Settings.calibrate else 0
                 bx = delta + self.pr_leave(leave_type, account) * self.pr_take_given_leave(leave_type, account)
 
         elif leave_type == 'New Child':
             if num_children == 0:
                 return 0
             else:
-                delta = .012459 if settings.calibrate else 0
+                delta = .012459 if Settings.calibrate else 0
                 bx = delta + self.pr_leave(leave_type, account) + self.pr_take_given_leave(leave_type, account)
 
         elif leave_type == 'Ill Child':
-            delta = .142228 if settings.calibrate else 0
+            delta = .142228 if Settings.calibrate else 0
             bx = delta - 3.960923 - 1.701863 * person.nochildren + .1395203 * person.separated \
                  + .6759066 * person.divorced
             prob = np.exp(bx) / (1 + np.exp(bx))
-            bx = prob * settings.leave_probability_factors[leave_type]
+            bx = prob * Settings.leave_probability_factors[leave_type]
 
         elif leave_type == 'Ill Spouse':
             if person.nevermarried or person.divorced:
                 return 0
             else:
-                delta = -.001269 if settings.calibrate else 0
+                delta = -.001269 if Settings.calibrate else 0
                 bx = delta + self.pr_leave(leave_type, account) + self.pr_take_given_leave(leave_type, account)
 
         elif leave_type == 'Ill Parent':
-            delta = .142228 if settings.calibrate else 0
+            delta = .142228 if Settings.calibrate else 0
             bx = delta - 11.92293 + .3218775 * person.agep - .0030002 * person.agep ** 2 - .9691048 * person.male \
                  + 1.198466 * person.nevermarried - .5518191 * person.colgrad
             prob = np.exp(bx) / (1 + np.exp(bx))
-            bx = prob * settings.leave_probability_factors[leave_type]
+            bx = prob * Settings.leave_probability_factors[leave_type]
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
         return bx * .74085585
 
@@ -410,7 +440,7 @@ class Simulator:
         bx = 0
         if leave_type == 'Own Health':
             bx = -2.525684 + .0142925 * person.agep - .2065864 * wage.lnfamic + .4498745 * wage.hourly \
-                 + .3152762 * person.divorced + .7395613 * account.employerWorkerEligFMLA
+                 + .3152762 * person.divorced + .7395613 * account.employer_worker_elig_fmla
 
         elif leave_type == 'New Child':
             if person.nochildren:
@@ -433,9 +463,9 @@ class Simulator:
                  + 1.096173 * person.nevermarried - .5798151 * person.colgrad
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
-        prob = np.exp(bx) / (1 + np.exp(bx)) * self.settings.leave_probability_factors[leave_type]
+        prob = np.exp(bx) / (1 + np.exp(bx)) * Settings.leave_probability_factors[leave_type]
         return prob
 
     def pr_take_given_leave(self, leave_type, account):
@@ -443,7 +473,7 @@ class Simulator:
 
         if leave_type == 'Own Health':
             bx = - 1.365028 + .0218084 * person.agep + .4299428 * person.male + .4799236 * person.lnfaminc \
-                 - .7657413 * person.blachnh - .7673626 * person.hispanic + .5116349 * account.employerWorkerEligFMLA
+                 - .7657413 * person.blachnh - .7673626 * person.hispanic + .5116349 * account.employer_worker_elig_fmla
 
             prob = np.exp(bx) / (1 + np.exp(bx))
             return prob
@@ -464,7 +494,7 @@ class Simulator:
             return .6706344
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
     def pr_multiple_leaves(self, leave_type, account):
         if leave_type == 'Own Health':
@@ -486,23 +516,7 @@ class Simulator:
             return .3207
 
         else:
-            self.settings.log_error('Invalid leave type')
-
-    def ran_discrete(self, lst):
-        cur_val = 0
-        for i in range(len(lst)):
-            cur_val += lst[i]
-            lst[i] = cur_val
-        return self.ran_discrete_cum(lst)
-
-    def ran_discrete_cum(self, lst, uniform=random.random()):
-        highest = 0
-        for i, prob in enumerate(lst):
-            if uniform > prob:
-                highest = i
-            else:
-                break
-        return highest + 1
+            Settings.log_error('Invalid leave type')
 
     def pr_dist_multiple_leaves(self, leave_type):
         # prob = {lt: 0 for lt in self.settings.leave_types}
@@ -547,7 +561,7 @@ class Simulator:
                 prob[i] = q[i] / q_sum
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
         return prob
 
@@ -574,7 +588,7 @@ class Simulator:
             bx = .90958
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
         prob = np.exp(bx) / (1 + np.exp(bx))
         return prob
@@ -603,7 +617,7 @@ class Simulator:
             bx = .7791853
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
         prob = np.exp(bx) / (1 + np.exp(bx))
         return prob
@@ -628,39 +642,37 @@ class Simulator:
             return doc or hos
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
     def length_of_leave(self, leave_type, account):
-        settings = self.settings
         person = account.person
 
         if leave_type == 'Own Health':
-            return settings.lol_own_health_noprog
+            return Settings.lol_own_health_noprog
 
         elif leave_type == 'Maternity':
-            return settings.lol_maternity_disability
+            return Settings.lol_maternity_disability
 
         elif leave_type == 'New Child':
-            return settings.lol_new_child_women if person.female else settings.lol_new_child_men
+            return Settings.lol_new_child_women if person.female else Settings.lol_new_child_men
 
         elif leave_type == 'Ill Child':
-            return settings.lol_ill_child_women if person.female else settings.lol_ill_child_men
+            return Settings.lol_ill_child_women if person.female else Settings.lol_ill_child_men
 
         elif leave_type == 'Ill Spouse':
-            return settings.lol_ill_spouse_women if person.female else settings.lol_ill_spouse_men
+            return Settings.lol_ill_spouse_women if person.female else Settings.lol_ill_spouse_men
 
         elif leave_type == 'Ill Parent':
-            return settings.lol_ill_parent_women if person.female else settings.lol_ill_parent_men
+            return Settings.lol_ill_parent_women if person.female else Settings.lol_ill_parent_men
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
     def any_leave_taken(self, account):
-        settings = self.settings
         uniform_draw = random.random()
         cum_prob_of_leave = 0
 
-        for leave_type in settings.leavetype:
+        for leave_type in Settings.leave_types:
             pr_leave = self.pr_take(leave_type, account)
             cum_prob_of_leave += pr_leave
 
@@ -670,11 +682,10 @@ class Simulator:
         return None, False
 
     def any_leave_needed(self, account):
-        settings = self.settings
         uniform = random.random()
         cum_prob_of_leave = 0
 
-        for leave_type in settings.leave_types:
+        for leave_type in Settings.leave_types:
             pr_leave = self.pr_need(leave_type, account)
             cum_prob_of_leave += pr_leave
 
@@ -685,12 +696,12 @@ class Simulator:
 
     def pr_need(self, leave_type, account):
         person = account.person
-        calibrate = self.settings.calibrate
+        calibrate = Settings.calibrate
 
         bx = 0
         if leave_type == 'Own Health':
             delta = -.096994 if calibrate else 0
-            bx = delta - 1.101205 - .6832573 * person.lnfaminc + .5309711 * account.employerWorkerEligFMLA
+            bx = delta - 1.101205 - .6832573 * person.lnfaminc + .5309711 * account.employer_worker_elig_fmla
 
         elif leave_type == 'Maternity':
             if not person.female or person.nochildren:
@@ -727,7 +738,7 @@ class Simulator:
                  - .3333713 * person.lnfaminc
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
         prob = np.exp(bx) / (1 + np.exp(bx))
         return prob * .76075913
@@ -755,7 +766,7 @@ class Simulator:
             return .4451086
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
     def pr_multiple_needs(self, leave_type):
         if leave_type == 'Own Health':
@@ -777,7 +788,7 @@ class Simulator:
             return .087347709
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
     def pr_dist_multiple_needs(self, leave_type):
         if leave_type == 'Own Health':
@@ -799,7 +810,7 @@ class Simulator:
             return [0.897980908, 0, 0.102019092]
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
     def pr_doctor_need(self, leave_type):
         if leave_type == 'Own Health':
@@ -821,7 +832,7 @@ class Simulator:
             return .9902155
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
     def pr_hospital_need(self, leave_type):
         if leave_type == 'Own Health':
@@ -843,7 +854,7 @@ class Simulator:
             return .8519646
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
     def pr_take_given_prog(self, leave_type, account):
         person = account.person
@@ -868,7 +879,7 @@ class Simulator:
             bx = 4.14044 - 1.207769 * person.lnfaminc
 
         else:
-            self.settings.log_error('Invalid leave type')
+            Settings.log_error('Invalid leave type')
 
         prob = np.exp(bx) / (1 + np.exp(bx))
         return prob
@@ -888,7 +899,6 @@ class Simulator:
         mask_beg = []
         mask_end = []
 
-        settings = self.settings
         unfinished_inventory = calender.unfinished_inventory
         n_days = calender.n_days
         end_day_dist = calender.end_day_dist
@@ -916,8 +926,9 @@ class Simulator:
             beg_day = n_days - row_unfinished[0] + 1
             mask_beg.append(beg_day)
             mask_end.append(end_day)
-            date_beg = calender.weekdays_after(beg_day - 1)
-            date_end = calender.weekdays_after(end_day - 1)
+            date_beg = Calender.weekdays_after(calender.first_date, beg_day - 1)
+            date_end = Calender.weekdays_after(date_beg, end_day - 1)
+            calender.first_date = date_end
             row_unfinished[1] = date_beg  # TODO: Convert this from date to number of days since 01/01/1960
             row_unfinished[2] = date_end
 
@@ -937,7 +948,7 @@ class Simulator:
                 for i in range(len(mask_beg)):
                     extend_end = mask_end[i] + length - 1
                     for j in range(mask_beg[i], extend_end + 1):
-                        if j >= 0 and j <= n_days:
+                        if 0 <= j <= n_days:
                             p_weight[j] = 1
 
                     denom = sum(p_weight)
@@ -945,20 +956,213 @@ class Simulator:
 
                     if denom > 0:
                         p_weight[:] = [w / denom for w in p_weight]
-                        end_day = self.ran_discrete(p_weight)
+                        end_day = Param.ran_discrete(p_weight)
                     else:
                         uniform = random.random()
                         end_day = int(uniform * n_days) + 1
-                        if (end_day > n_days):
+                        if end_day > n_days:
                             end_day = n_days
                             no_overlap = False
                     beg_day = end_day - length + 1
                     mask_beg.append(beg_day)
                     mask_end.append(end_day)
-                    date_beg = calender.weekdays_after(beg_day - 1)
-                    date_end = calender.weekdays_after(end_day - 1)
+                    date_beg = calender.weekdays_after(calender.first_date, beg_day - 1)
+                    date_end = calender.weekdays_after(date_beg, end_day - 1)
+                    calender.first_date = date_end
                     row_unfinished[1] = date_beg
                     row_unfinished[2] = date_end
                     end_day_dist[end_day - 1] += account.weight
 
         return no_overlap
+
+    def pr_paid_leave(self, leave, account):
+        person = account.person
+        wage = account.wage
+        leave_type = leave.leave_type
+
+        bx = 0
+        if leave_type == 'Own Health':
+            bx = - 6.429768 + 1.112856 * account.employer_worker_elig_fmla - .8137799 * wage.hourly \
+                 + .1506044 * person.age - .0014772 * person.agesq + .9326934 * person.lnfaminc
+
+        elif leave_type == 'Maternity':
+            bx = - 6.061317 + 1.657273 * person.lnfaminc
+
+        elif leave_type == 'New Child':
+            bx = - 4.408498 + 2.269567 * account.employer_worker_elig_fmla + 1.080977 * person.lnfaminc
+
+        elif leave_type == 'Ill Child':
+            bx = 2.833213 - 2.484907 * wage.hourly
+
+        elif leave_type == 'Ill Spouse':
+            bx = 2.685577 - 2.084803 * wage.hourly
+
+        elif leave_type == 'Ill Parent':
+            bx = - .8967988 + .779754 * person.lnfaminc - 1.993381 * wage.hourly
+
+        else:
+            Settings.log_error('Invalid leave type')
+
+        prob = np.exp(bx) / (1 + np.exp(bx))
+        return prob
+
+    def benefits(self, leave, account):
+        person = account.person
+        wage = account.wage
+
+        weekly_wage = wage.weekly_wage
+        leave.weekly_wage = weekly_wage
+        weeks_on_leave = leave.length_no_prog / 5
+
+        n_weeks = math.ceil(weeks_on_leave)
+        full_weeks = math.floor(weeks_on_leave)
+        fraction = weeks_on_leave - n_weeks
+        fraction_days = leave.length_no_prog % 5
+
+        w_pay = [0]
+        days_pay = [0]
+
+        if n_weeks > 0:
+            w_pay = [0] * int(n_weeks)
+            days_pay = [0] * int(n_weeks)
+
+            if leave.paid:
+                pay_group = self.pay_group(leave, account)
+                pay_stats = Settings.part_pay[leave.leave_type]
+
+                if pay_group == 6:
+                    self.partial_pay_every_week(w_pay, days_pay, full_weeks, weekly_wage, 1, fraction_days, fraction)
+                elif pay_group == 1 or pay_group == 2:
+                    frac_pay = 0.125 if pay_group == 1 else .375
+                    self.weeks_paid(w_pay, days_pay, pay_stats, 0, weeks_on_leave, full_weeks,
+                                    weekly_wage, frac_pay, fraction_days, fraction)
+                elif pay_group == 3:
+                    frac_pay = .5
+                    self.weeks_paid(w_pay, days_pay, pay_stats, 1, weeks_on_leave, full_weeks,
+                                    weekly_wage, frac_pay, fraction_days, fraction)
+                elif pay_group == 4 or pay_group == 5:
+                    frac_pay = 0.625 if pay_group == 5 else .875
+                    self.weeks_paid(w_pay, days_pay, pay_stats, 0, weeks_on_leave, full_weeks,
+                                    weekly_wage, frac_pay, fraction_days, fraction)
+                else:
+                    Settings.log_error('Error: Pay Group out of bound')
+
+        leave.pay_amt_no_prog = sum(w_pay)
+        leave.w_pay_no_prog = w_pay
+        leave.days_pay_no_prog = sum(days_pay)
+
+    def pay_group(self, leave, account):
+        pr_full_pay = self.pr_full_pay(leave, account)
+        if random.random() < pr_full_pay:
+            return 6
+        else:
+            prob = self.o_prob_pay_group(leave)
+            uniform = random.random()
+
+            for i, p in enumerate(prob):
+                if uniform < p:
+                    return i
+            return 5
+
+    def pr_full_pay(self, leave, account):
+        person = account.person
+        wage = account.wage
+        leave_type = leave.leave_type
+        ln_length = math.log(leave.length)
+
+        bx = 0
+        if leave_type == 'Own Health':
+            bx = 1.292053 - 1.210179 * wage.hourly + .0271334 * person.age + .4222762 * person.lnfaminc \
+                 - .9217541 * ln_length
+
+        elif leave_type == 'Maternity':
+            bx = 5.07015 - 1.296848 * wage.hourly - 1.051936 * ln_length
+
+        elif leave_type == 'New Child':
+            bx = 5.701751 - 1.460606 * ln_length
+
+        elif leave_type == 'Ill Child':
+            return .938284
+
+        elif leave_type == 'Ill Spouse':
+            bx = 1.214342 + .7277014 * person.lnfaminc
+
+        elif leave_type == 'Ill Parent':
+            bx = - 3.955898 + 1.495486 * person.lnfaminc
+
+        else:
+            Settings.log_error('Invalid leave type')
+
+        prob = np.exp(bx) / (1 + np.exp(bx))
+        return prob
+
+    def o_prob_pay_group(self, leave):
+        leave_type = leave.leave_type
+
+        prob = []
+        if leave_type == 'Own Health':
+            prob = [0.161849711, 0.283236994, 0.473988439, 0.791907514]
+
+        elif leave_type == 'Maternity':
+            cut = [4.4297677, 5.139921, 6.694829, 7.870817]
+            bx = 1.507677 * math.log(leave.length)
+            prob = [1 / (1 + math.exp(bx - c)) for c in cut]
+
+        elif leave_type == 'New Child':
+            prob = [0.222222222, 0.333333333, 0.5, 0.77777778]
+
+        elif leave_type == 'Ill Child':
+            prob = [0.083333333, 0.083333333, 0.5, 0.666666667]
+
+        elif leave_type == 'Ill Spouse':
+            prob = [0.083333333, 0.083333333, 0.5, 0.666666667]
+
+        elif leave_type == 'Ill Parent':
+            prob = [0.083333333, 0.083333333, 0.5, 0.666666667]
+
+        else:
+            Settings.log_error('Invalid leave type')
+
+        return prob
+
+    def weeks_paid(self, w_pay, days_pay, pay_stats, index, weeks_on_leave, full_weeks, weekly_wage, frac_pay, fraction_days, fraction):
+        if random.random() < pay_stats[index][0]:
+            self.partial_pay_every_week(w_pay, days_pay, full_weeks, weekly_wage, frac_pay, fraction_days, fraction)
+        elif random.random() < pay_stats[index][1]:
+            self.full_pay_some_weeks(w_pay, days_pay, weeks_on_leave, weekly_wage, frac_pay)
+        else:
+            self.partial_pay_some_weeks(w_pay, days_pay, weeks_on_leave, weekly_wage, frac_pay)
+
+    def partial_pay_every_week(self, w_pay, days_pay, full_weeks, weekly_wage, frac_pay, fraction_days, fraction):
+        for i in range(full_weeks):
+            w_pay[i] = frac_pay * weekly_wage
+            days_pay[i] = 5
+        if fraction_days > 0:
+            w_pay[full_weeks] = fraction * frac_pay * weekly_wage
+            days_pay[full_weeks] = fraction_days
+
+    def full_pay_some_weeks(self, w_pay, days_pay, weeks_on_leave, weekly_wage, frac_pay):
+        weeks_paid = frac_pay * weeks_on_leave
+        full_weeks = int(math.floor(weeks_paid))
+        fraction_last_week = weeks_paid - full_weeks
+
+        for i in range(full_weeks):
+            w_pay[i] = weekly_wage
+            days_pay[i] = 5
+        if fraction_last_week > 0:
+            w_pay[full_weeks] = fraction_last_week * weekly_wage
+            days_pay[full_weeks] = round(fraction_last_week * 5)
+
+    def partial_pay_some_weeks(self, w_pay, days_pay, weeks_on_leave, weekly_wage, frac_pay):
+        p = math.sqrt(frac_pay)
+
+        weeks_paid = p * weeks_on_leave
+        full_weeks = int(math.floor(weeks_paid))
+        fraction_last_week = weeks_paid - full_weeks
+
+        for i in range(full_weeks):
+            w_pay[i] = p * weekly_wage
+            days_pay[i] = 5
+        if fraction_last_week > 0:
+            w_pay[full_weeks] = fraction_last_week * p * weekly_wage
+            days_pay[full_weeks] = round(fraction_last_week * 5)

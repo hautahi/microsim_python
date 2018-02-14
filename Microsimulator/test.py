@@ -4,7 +4,7 @@ import numpy as np
 from Settings import Settings
 from test2 import editSettings
 from sklearn import linear_model
-from StaticObj import StaticObj, increment
+from StaticObj import StaticObj
 
 #
 # df = pd.read_csv("test.csv")
@@ -41,14 +41,16 @@ from StaticObj import StaticObj, increment
 # reg.fit([[2], [3], [1]], [1, 1, -1])
 # print(reg.coef_, reg.intercept_)
 
-# print(StaticObj.val)
-# increment()
-# print(StaticObj.val)
-# StaticObj.val = 'asd'
-# print(StaticObj.val)
-# editSettings()
-# print(StaticObj.val)
+print(StaticObj.val)
+StaticObj.increment()
+print(StaticObj.val)
+StaticObj.val = 'asd'
+print(StaticObj.val)
+editSettings()
+print(StaticObj.val)
 
-df = pd.read_csv('parameters/length ILL CHILD men 2.txt', sep='\t')
-df.columns = ['num', 'prob']
-print(df)
+print(Settings.lol_ill_child_men)
+
+# df = pd.read_csv('parameters/length ILL CHILD men 2.txt', sep='\t')
+# df.columns = ['num', 'prob']
+# print(df)

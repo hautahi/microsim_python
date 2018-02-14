@@ -1,8 +1,9 @@
 import numpy as np
+from Settings import Settings
 
 
 class Wage:
-    def __init__(self, person, uniform1, uniform2, settings):
+    def __init__(self, person, uniform1, uniform2):
         self.person = person
 
         # TODO: Figure out what _2009to2013ACS_ means. Can that be supplied by user? Can we check for it in files?
@@ -123,10 +124,10 @@ class Wage:
         if self.majind > 0:
             self.vmajind[self.majind - 1][0] = 1
 
-        weeks_worked = self.get_weeks_worked(uniform1, settings)
+        weeks_worked = self.get_weeks_worked(uniform1)
         self.weeks_worked = weeks_worked
         if self.person.agep < 16:
-            settings.log_error('Error: Age of person is less that 16')
+            Settings.log_error('Error: Age of person is less that 16')
 
         self.lastyear = False
         self.anydata = True
@@ -160,7 +161,7 @@ class Wage:
 
         self.family_income *= household.adjinc
 
-        self.num_employers = self.set_num_employers(uniform2, settings)
+        self.num_employers = self.set_num_employers(uniform2)
         self.num_dep_child_u18 = self.get_num_dep_children()
 
         if self.num_dep_child_u18 > 0:
@@ -174,7 +175,7 @@ class Wage:
         self.size_cat = 0
         self.num_employees = 0
 
-    def get_weeks_worked(self, uniform, settings):
+    def get_weeks_worked(self, uniform):
         person = self.person
         female = person.female
         lnearn = person.lnearn
@@ -222,7 +223,7 @@ class Wage:
             return self.get_cutoff(uniform, cut, bx)
 
         else:
-            settings.log_error('Error: No weeks worked')
+            Settings.log_error('Error: No weeks worked')
 
     @staticmethod
     def get_cutoff(uniform, cut, bx):
@@ -237,7 +238,7 @@ class Wage:
 
         return cutoff if uniform < cumprob else cutoff + 1
 
-    def set_num_employers(self, uniform, settings):
+    def set_num_employers(self, uniform):
         person = self.person
 
         lths = person.lths
@@ -275,7 +276,7 @@ class Wage:
 
         return ndep
 
-    def pr_hourly(self, settings):
+    def pr_hourly(self):
         person = self.person
         bx = 3.443597 + .5250494 * person.female + .3448871 * person.blacknh - .1509796 * person.agep + \
              .0015093 * person.agep ** 2 - .9514732 * person.ba - 1.590943 * person.maplus - .8849493 * self.occ1 + \
@@ -286,7 +287,7 @@ class Wage:
         e = np.exp(bx)
         return e / (1 + e)
 
-    def set_employer_size(self, uniform1, uniform2, uniform3, settings):
+    def set_employer_size(self, uniform1, uniform2, uniform3):
         person = self.person
 
         if person.cow == 6 or person.cow == 7:
@@ -331,9 +332,9 @@ class Wage:
             size_cat = 2 + self.get_cutoff(uniform1, cut, bx)
 
             if size_cat == 3:
-                num_employees = self.search_dataframe(settings.prdist_50_99, uniform3)
+                num_employees = self.search_dataframe(Settings.prdist_50_99, uniform3)
             elif size_cat == 4:
-                num_employees = self.search_dataframe(settings.prdist_100_499, uniform3)
+                num_employees = self.search_dataframe(Settings.prdist_100_499, uniform3)
             else:
                 num_employees = 500
         else:
@@ -349,10 +350,10 @@ class Wage:
 
             if uniform2 < prob:
                 size_cat = 2
-                num_employees = self.search_dataframe(settings.prdist_10_49, uniform3)
+                num_employees = self.search_dataframe(Settings.prdist_10_49, uniform3)
             else:
                 size_cat = 1
-                num_employees = self.search_dataframe(settings.prdist_u10, uniform3)
+                num_employees = self.search_dataframe(Settings.prdist_u10, uniform3)
 
         self.size_cat = size_cat
         self.num_employees = num_employees

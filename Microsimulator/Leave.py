@@ -47,6 +47,7 @@ class Leave:
         self.eligible = False
         self.leave_taken_back = False
         self.reason_taken_back = 0
+
         self.need = False
         self.length_no_prog = 0
         self.length_no_prog_prog_year = 0
@@ -55,6 +56,7 @@ class Leave:
 
         self.w_pay_no_prog = []
         self.days_pay_no_prog = []
+        self.w_pay_induced = []
         self.w_pay_no_prog_prog_year = []
         self.days_pay_no_prog_prog_year = []
         self.w_pay_induced_prog_year = []

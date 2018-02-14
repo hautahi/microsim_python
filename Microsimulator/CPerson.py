@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class CPerson:
     firstPP = None
     lastPP = None
