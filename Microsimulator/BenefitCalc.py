@@ -3,7 +3,8 @@ import Calender
 import random
 import datetime
 import Param
-from enum import Enum, auto
+from enum import Enum
+import numpy as np
 
 
 class BenefitCalc:
@@ -77,7 +78,7 @@ class BenefitCalc:
         eow = date_begin
 
         length = Calender.weekdays_between(date_begin, date_end) + 1
-        n_weeks = length / 5
+        n_weeks = length // 5
         remainder = length % 5
         fraction = True if remainder else False
 
@@ -342,7 +343,30 @@ class BenefitCalc:
         days_pay_prog_year = days_pay.copy()
 
         if leave.pay_amt > 0 and (leave.begin_prog_year > leave.begin or leave.end_prog_year < leave.end):
-            self.intersect_program_year_2(w_pay_prog_year, days_pay_prog_year, leave.begin_prog_year, leave.end_prog_year)
+            self.intersect_program_year_2(w_pay_prog_year, days_pay_prog_year, leave.begin_prog_year, leave.end_prog_year, self.date_pay, self.daily_pay, self.week_num_of_day_p)
+
+        leave.w_pay_prog_year = w_pay_prog_year
+        leave.days_pay_prog_year = days_pay_prog_year
+        leave.w_pay_induced_prog_year = [w_pay_prog_year[i] - w_pay_no_prog_prog_year[i] for i in range(len(w_pay_prog_year))]
+        leave.pay_amt_prog_year = sum(w_pay_prog_year)
+
+        w_ben_prog_year = w_ben.copy()
+        days_ben_prog_year = days_pay.copy()
+
+        if leave.benefits_amt > 0 and (leave.begin_prog_year > leave.begin or leave.end_prog_year < leave.end):
+            self.intersect_program_year_2(w_ben_prog_year, days_ben_prog_year, leave.begin_prog_year, leave.end_prog_year, self.date_ben, self.daily_ben, self.week_num_of_day_b)
+
+        leave.w_benefits_prog_year = w_ben_prog_year
+        leave.days_benefits_prog_year = days_ben_prog_year
+        leave.benefits_amt_prog_year = sum(w_ben_prog_year)
+        leave.uncompensated_amt_prog_year = leave.lost_product_prog_year - leave.pay_amt_prog_year - leave.benefits_amt_prog_year
+
+        leave.days_benefits_prog_year = sum(days_ben_prog_year)  # TODO: This gets set twice? Which one is correct?
+        leave.days_paid_prog_year = days_pay_prog_year
+
+        self.create_day_matrix()
+        leave.days_unpaid = self.count_unpaid()
+        leave.days_unpaid_prog_year = self.count_unpaid_prog_year()
 
     def begin_unpaid_leave_elig(self):
         pass
@@ -375,11 +399,7 @@ class BenefitCalc:
                     days[i] = n_days_overlap
         bow += datetime.timedelta(weeks=1)
 
-    def intersect_program_year_2(self, amount, days, begin_year, end_year):
-        date = self.date_pay
-        daily_pay = self.daily_pay
-        week_num_of_day_p = self.week_num_of_day_p
-
+    def intersect_program_year_2(self, amount, days, begin_year, end_year, date, daily, week_num_of_day):
         bow = self.leave.begin
         for i in range(len(amount)):
             eow = Calender.weekdays_after(bow, 4)
@@ -387,12 +407,52 @@ class BenefitCalc:
                 amount[i] = 0
                 days[i] = 0
             elif bow < begin_year:
-                if len(date) != len(daily_pay) or len(date) != len(week_num_of_day_p):
+                if len(date) != len(daily) or len(date) != len(week_num_of_day):
                     Settings.log_error("Error: Size of date, week_num_of_day_p, and daily_pay lists are not equal in intersect_program_year_2")
 
                 amount[i] = 0
                 days[i] = 0
-                pos = week_num_of_day_p
+
+                try:
+                    pos = week_num_of_day.index(i)
+                    for j in range(pos, len(week_num_of_day)):
+                        if week_num_of_day[j] != i:
+                            break
+                        if date[j] <= end_year:
+                            amount[i] += daily[j]
+                            days[i] += 1
+                except ValueError:
+                    pass
+            bow += datetime.timedelta(weeks=1)
+
+    def create_day_matrix(self):
+        self.day_matrix = np.asmatrix([self.daily_ben, self.daily_pay]).T
+
+    def count_unpaid(self):
+        unpaid_days = 0
+        for row in self.day_matrix:
+            if row.item(0) <= 0 and row.item(1) <= 0:
+                unpaid_days += 1
+        return unpaid_days
+
+    def count_unpaid_prog_year(self):
+        leave = self.leave
+        day_matrix = self.day_matrix
+        unpaid_days_prog_year = leave.days_unpaid
+        if leave.begin_prog_year == leave.begin and leave.end_prog_year == leave.end:
+            return unpaid_days_prog_year
+
+        begin_difference = (leave.begin_prog_year - leave.begin).day
+        for i in range(begin_difference):
+            if day_matrix.item(i, 0) <= day_matrix(i, 1) <= 0:
+                unpaid_days_prog_year -= 1
+
+        end_difference = (leave.end_prog_year - leave.end).day
+        for i in range(end_difference):
+            if day_matrix.item(-i, 0) <= day_matrix(-i, 1) <= 0:
+                unpaid_days_prog_year -= 1
+
+        return unpaid_days_prog_year
 
 class State(Enum):
     begin_paid_leave_elig = 0
