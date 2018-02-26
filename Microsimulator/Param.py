@@ -1,6 +1,7 @@
 from Settings import Settings
 import math
 import random
+import Calender
 
 
 def o_prob_pay_group(leave):
@@ -65,6 +66,20 @@ def pr_extend(leave_type, account):
     return prob
 
 
+def pr_extend_3(leave_type):
+    if not Settings.extend_leaves:
+        return 0
+    if leave_type == 'Own Health':
+        return 1
+    return 0.25
+
+
+def pr_extend_3_new(leave_type):
+    if not Settings.extend_leaves:
+        return 0
+    return Settings.extend_probabilities[leave_type]
+
+
 def ran_discrete(lst):
         cur_val = 0
         for i in range(len(lst)):
@@ -81,6 +96,22 @@ def ran_discrete_cum(lst, uniform=random.random()):
             else:
                 break
         return highest + 1
+
+
+def days_extend(benefit_calc):
+    leave = benefit_calc.leave
+    uniform = leave.unifrom_draw_leave_length
+    length = leave.length_no_prog
+
+    if leave.leave_type == 'Own Health':
+        original_length = ran_discrete_cum(Settings.lol_own_health_noprog, uniform=uniform)
+        new_length = ran_discrete_cum(Settings.lol_own_health_prog, uniform=uniform)
+        extra = new_length - original_length
+        return extra if extra >= 0 else 0
+    else:
+        if length == 0:
+            return 1
+        return length * 0.25
 
 
 def days_extend_new(benefit_calc):
@@ -111,3 +142,26 @@ def days_extend_new(benefit_calc):
     return extra
 
 
+def pr_participate(benefit_calc, p):
+    account = benefit_calc.account
+    leave = benefit_calc.leave
+
+    faminc = account.wage.family_income
+    if faminc < 0:
+        faminc = 1
+
+    if p == 1:
+        pay_date = Calender.weekdays_after(benefit_calc.end_date[-1], 1)
+        week_num = Calender.weekdays_between(leave.begin, pay_date) // 5
+        wage = 0 if len(leave.w_pay_no_prog) <= week_num else leave.w_pay_no_prog[week_num]
+        diff = account.weekly_benefit if benefit_calc.topoff1 else account.weekly_benefit - wage
+    else:
+        diff = account.weekly_benefit
+
+    if Settings.partrate:
+        bx = -4 + 0.9531 * diff - .0000421442 * faminc
+        return math.exp(bx) / (1 + math.exp(bx))
+    else:
+        if diff > 0:
+            return 1
+        return 0

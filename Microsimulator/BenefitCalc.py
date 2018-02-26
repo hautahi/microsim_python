@@ -2,6 +2,7 @@ from Settings import Settings
 import Calender
 import random
 import datetime
+import math
 import Param
 from enum import Enum
 import numpy as np
@@ -35,6 +36,7 @@ class BenefitCalc:
         self.fraction_b = []
         self.days_b = []
         self.days = []
+        self.topoff1 = False
 
         if leave.length_no_prog == 0:
             self.was_a_needer = True
@@ -59,23 +61,156 @@ class BenefitCalc:
                 self.begin_unpaid_leave_elig()
 
     def begin_paid_leave_elig(self):
-        date_begin = self.leave.begin
+        leave = self.leave
+        date_begin = leave.begin
         self.state.append(State.begin_paid_leave_elig)
         self.begin_date.append(date_begin)
 
-        wait_weeks = Settings.waiting_period[self.leave.leave_type]
+        wait_weeks = Settings.waiting_period[leave.leave_type]
 
-        if self.program_begin_date > self.leave.end_no_prog:
-            self.end_date.append(self.leave.end_no_prog)
+        if self.program_begin_date > leave.end_no_prog:
+            self.end_date.append(leave.end_no_prog)
+            self.bple_pay_during()
+            self.extend_5()
+        elif self.program_begin_date <= leave.end_no_prog and leave.w_pay_no_prog[wait_weeks]:
+            self.end_date.append(Calender.weekdays_before(self.program_begin_date, 1))
+            if self.end_date[-1] >= self.begin_date[-1]:
+                self.bple_pay_during()
+            self.participate_1()
+            # TODO
 
-    def ple_pay_during(self):
+    def participate_1(self):
+        decision_date = self.end_date[-1]
+        self.state.append(State.participate_1)
+        self.begin_date.append(decision_date)
+
+        pr_part = Param.pr_participate(self, 1)
+        if random.random() < pr_part or (self.was_a_needer and Settings.takeup100):
+            self.end_date.append(decision_date)
+        elif self.was_a_needer and not Settings.takeup100:
+            self.return_as_leave_needer(3)
+        else:
+            self.end_date.append(decision_date)
+            self.continue_paid_leave()
+
+    def participate_2(self):
+        decision_date = self.end_date[-1]
+        self.state.append(State.participate_2)
+        self.begin_date.append(decision_date)
+
+        pr_part = Param.pr_participate(self, 2)
+
+        if random.random() < pr_part or (self.was_a_needer and Settings.takeup100):
+            self.end_date.append(decision_date)
+            self.begin_program()
+        elif self.was_a_needer and not Settings.takeup100:
+            self.return_as_leave_needer(3)
+        else:
+            self.end_date.append(decision_date)
+            self.unpaid_leave_to_ol()
+
+    def begin_program(self):
+        leave = self.leave
+        max_days_on_program = (Settings.max_weeks[leave.leave_type] - Settings.waiting_period[leave.leave_type]) * 5
+        date_end_max = Calender.weekdays_after(self.end_date[-1], max_days_on_program)
+        days_left_after_program_ends = Calender.weekdays_between(date_end_max, leave.end_no_prog)
+
+        if days_left_after_program_ends < 0:
+            self.end_date.append(leave.end_no_prog)
+            self.benefits_during()
+            if self.topoff1:
+                self.pay_during()
+            self.extend_1()
+        else:
+            self.end_date.append(date_end_max)
+            self.benefits_during()
+            if self.topoff1:
+                self.pay_during()
+            days_of_pay_left = self.num_days_of_original_pay() - sum(self.days_p)
+
+            if days_of_pay_left > 0:
+                if days_left_after_program_ends > 0:
+                    self.receive_pay_after_program()
+                else:
+                    self.extend_2()
+            else:
+                if days_left_after_program_ends > 0:
+                    self.unpaid_leave_to_ol()
+                else:
+                    self.end_leave()
+
+    def continue_paid_leave(self):
+        leave = self.leave
+
+        n_days_paid_no_prog = sum(leave.days_pay_no_prog)
+        if n_days_paid_no_prog == leave.length_no_prog:
+            self.end_date.append(leave.end_no_prog)
+            self.cpl_pay_during()
+            self.extend_3()
+        else:
+            self.end_date.append(Calender.weekdays_after(leave.begin, n_days_paid_no_prog - 1))
+            self.cpl_pay_during()
+            self.participate_2()
+
+    def pay_during(self):
+        leave = self.leave
+        state_num = len(self.state)
+
+        bow = self.begin_date[-1]
+        eow = self.end_date[-1]
+
+        week_num_beg = int(math.ceil((Calender.weekdays_between(leave.begin, bow) + 1) / 5))
+        week_num_end = int(math.ceil((Calender.weekdays_between(leave.begin, eow) + 1) / 5))
+
+        if len(self.week_num_b) != week_num_end - week_num_beg + 1:
+            Settings.log_error('week_num_b is wrong size')
+        if self.week_num_b[0] != week_num_beg:
+            Settings.log_error('week_num_b[0] is wrong')
+
+        for i in range(week_num_end - week_num_beg + 1):
+            weekly_wage = leave.w_pay_no_prog[i]
+            weekly_ben = self.weekly_ben[i]
+            top_off = weekly_wage - weekly_ben
+            if (Settings.rep_ratio > 1 or Settings.dep_allowance > 0) and top_off < 0:
+                top_off = 0
+            if -0.5 < top_off < 0.5:
+                top_off = 0
+            if top_off < 0:
+                Settings.log_error('top_off negative in pay_during')
+
+            days_this_week = self.days_b[i]
+            if days_this_week <= 0:
+                Settings.log_error('days_this_week is not positive in pay_during')
+            eow = Calender.weekdays_between(bow, days_this_week - 1)
+            daily_top_off = top_off / days_this_week
+
+            pointer = bow
+            while pointer <= eow:
+                if daily_top_off > 0:
+                    self.date_pay.append(pointer)
+                    self.daily_pay.append(daily_top_off)
+                    self.week_num_of_day_p.append(week_num_beg + i)
+                pointer += datetime.timedelta(days=1)
+                pointer = Calender.advance_to_weekday(pointer)
+
+            self.weekly_wage.append(top_off)
+            self.week_num_p.append(week_num_beg + i)
+            self.days_p.append(self.days_b[i])
+            self.fraction_p.append(self.fraction_b[i])
+            self.state_num_p.append(state_num)
+            bow += datetime.timedelta(weeks=1)
+
+        if eow != self.end_date[-1]:
+            Settings.log_error("Error: End of week doesn't match in pay_during")
+
+    def bple_pay_during(self):
         date_begin = self.begin_date[-1]
         date_end = self.end_date[-1]
         leave = self.leave
         state_num = len(self.state)
 
         bow = date_begin
-        eow = date_begin
+        eow = date_end
 
         length = Calender.weekdays_between(date_begin, date_end) + 1
         n_weeks = length // 5
@@ -118,8 +253,163 @@ class BenefitCalc:
                 self.week_num_of_day_p.append(n_weeks + 1)
                 pointer = Calender.weekdays_after(pointer, 1)
 
-            if eow != date_end:
-                Settings.log_error("End of week is not equal to date_end at end of pay_during")
+        if eow != date_end:
+            Settings.log_error("Error: End of week is not equal to date_end at end of bple_pay_during")
+
+    def cpl_pay_during(self):
+        leave = self.leave
+
+        bow = self.begin_date[-1]
+        eow = self.end_date[-1]
+
+        first_week = self.week_num_p[-1] if len(self.week_num_p) else 0
+        for i in range(first_week, int(math.ceil(leave.length_no_prog / 5))):
+            wages = leave.w_pay_no_prog[i]
+            self.weekly_wage.append(wages)
+            self.week_num_p.append(i)
+            days = leave.days_pay_no_prog[i]
+            self.days_p.append(days)
+            if days == 5:
+                self.fraction_p.append(False)
+            else:
+                self.fraction_p.append(True)
+            self.state_num_p.append(len(self.state))
+
+            daily_wage = wages / days
+            eow = Calender.weekdays_after(bow, days - 1)
+            pointer = bow
+
+            while pointer <= eow:
+                self.date_pay.append(pointer)
+                self.daily_pay.append(daily_wage)
+                self.week_num_of_day_p.append(i)
+
+                pointer += datetime.timedelta(days=1)
+                pointer = Calender.advance_to_weekday(pointer)
+            bow += datetime.timedelta(weeks=1)
+
+        if eow != self.end_date[-1]:
+            Settings.log_error("Error: End of week is not equal to date_end at end of cpl_pay_during")
+
+    def return_as_leave_needer(self, reason):
+        leave = self.leave
+        account = self.account
+
+        leave.length_no_prog = None
+        leave.length = 0
+        leave.end_no_prog = None
+        leave.begin = None
+        leave.end = None
+        leave.truncated = False
+        leave.need = True
+        leave.leave_taken_back = True
+        leave.reason_taken_back = reason
+
+        account.n_leaves -= 1
+        account.n_need += 1
+
+        self.state = []
+        self.begin_date = []
+        self.end_date = []
+        self.days = []
+        self.weekly_ben = []
+        self.week_num_b = []
+        self.state_num_b = []
+        self.weekly_wage = []
+        self.week_num_p = []
+        self.fraction_p = []
+        self.days_p = []
+        self.state_num_p = []
+
+    def extend_1(self):
+        leave = self.leave
+        leave_type = leave.leave_type
+        decision_date = self.end_date[-1]
+
+        self.state.append(State.extend_3)
+        self.begin_date.append(decision_date)
+
+        pr_extend = Param.pr_extend_1(leave_type) if Settings.extend_old else Param.pr_extend_1_new(leave_type)
+        if random.random() < pr_extend:
+            days_extend = Param.days_extend(self) if Settings.extend_old else Param.days_extend_new(self)
+            prog_max = Settings.max_weeks[leave.leave_type] * 5 - Settings.waiting_period[leave.leave_type] * 5
+            if days_extend > prog_max:
+                days_extend = prog_max
+
+            end = Calender.weekdays_after(decision_date, days_extend)
+            date_prog_end = Calender.weekdays_between(self.begin_date[-1], (Settings.max_weeks[leave_type] - Settings.waiting_period[leave_type]) * 5)
+            if end > date_prog_end:
+                end = date_prog_end
+
+            if decision_date < self.fmla_date < end and Settings.fmla_constraint:
+                end = self.fmla_date
+            leave.end = end
+
+            self.end_date.append(decision_date)
+            self.continue_program()
+        else:
+            self.end_date.append(decision_date)
+            self.end_leave()
+
+    def extend_3(self):
+        leave = self.leave
+        decision_date = self.end_date[-1]
+
+        self.state.append(State.extend_3)
+        self.begin_date.append(decision_date)
+
+        pr_extend = Param.pr_extend_3(leave.leave_type) if Settings.extend_old else Param.pr_extend_3_new(leave.leave_type)
+
+        if random.random() < pr_extend:
+            days_extend = Param.days_extend(self) if Settings.extend_old else Param.days_extend_new(self)
+            prog_max = Settings.max_weeks[leave.leave_type] * 5 - Settings.waiting_period[leave.leave_type] * 5
+            if days_extend > prog_max:
+                days_extend = prog_max
+
+            end = Calender.weekdays_after(decision_date, days_extend)
+
+            if decision_date < self.fmla_date < end and Settings.fmla_constraint:
+                end = self.fmla_date
+            leave.end = end
+
+            self.end_date.append(decision_date)
+            self.continue_program()
+        else:
+            self.end_date.append(decision_date)
+            self.end_leave()
+
+    def extend_4(self):
+        leave = self.leave
+        decision_date = self.end_date[-1]
+
+        self.state.append(State.extend_4)
+        self.begin_date.append(Calender.weekdays_after(decision_date, 1))
+
+        pr_extend = Param.pr_extend(leave.leave_type, self.account)
+
+        if random.random() < pr_extend:
+            wait_days = Settings.waiting_period[leave.leave_type] * 5
+            end_old = Calender.weekdays_after(leave.begin, wait_days + 4)
+
+            if Settings.extend_old:
+                leave.end(end_old)
+            else:
+                days_extend = Param.days_extend_new(self)
+                max_weeks = Settings.max_weeks[leave.leave_type] * 5 - Settings.waiting_period[leave.leave_type] * 5
+                if days_extend > max_weeks:
+                    days_extend = max_weeks
+                end = Calender.weekdays_after(decision_date, days_extend)
+                if end < end_old:
+                    end = end_old
+                if decision_date < self.fmla_date and end > self.fmla_date and Settings.fmla_constraint:
+                    end = self.fmla_date
+                leave.end = end
+
+            self.end_date.append(Calender.weekdays_before(self.begin_date, 1))
+            self.continue_program()
+        else:
+            self.end_date.append(decision_date)
+            self.end_leave()
 
     def extend_5(self):
         leave = self.leave
@@ -369,7 +659,14 @@ class BenefitCalc:
         leave.days_unpaid_prog_year = self.count_unpaid_prog_year()
 
     def begin_unpaid_leave_elig(self):
-        pass
+        leave = self.leave
+
+        self.state.append(State.begin_unpaid_leave_elig)
+        self.begin_date.append(leave.begin)
+        wait_weeks = Settings.waiting_period[leave.leave_type]
+
+        if self.program_begin_date > leave.end_no_prog:
+            self.end_date.append(leave.end_no_prog)
 
     def intersect_program_year(self, amount, days, begin_year, end_year):
         bow = self.leave.begin
