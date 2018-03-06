@@ -1,6 +1,6 @@
 """
 This program takes the cleaned FMLA data and calculates a number of
-distirbutions of leave length.
+distributions of leave length.
 """
 
 # Housekeeping
