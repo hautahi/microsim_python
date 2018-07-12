@@ -52,10 +52,10 @@ def logit_fit(dic,conditional,weights,d,name):
         df.to_csv("./estimates/"+name+ "_" +leavetype + '.csv',index=False,header=True)
 
 # Read in cleaned FMLA data
-d = pd.read_csv("fmla_clean_2012.csv")
+d = pd.read_csv("fmla_clean_2012_train.csv")
 
 # --------------------
-# 1. Type of leave taken
+# Run estimations
 # --------------------
 
 # Setup estimation equation dictionary
@@ -84,7 +84,7 @@ weight = {"own": "fixed_weight",
           "bond": "fixed_weight"
 }
 
-logit_fit(specif,conditional,weight,d,"typeleave")
+logit_fit(specif,conditional,weight,d,"takeleave")
 
 # ------------------------------------------------------
 # 2. Probability of seeing a doctor
@@ -177,7 +177,7 @@ weight = {"own": "weight",
           "matdis": "weight",
           "bond": "weight"}
 
-logit_fit(specif,conditional,weight,d,"takeleave")
+logit_fit(specif,conditional,weight,d,"takeneedleave")
 
 # ---------------------------------------------------------------
 # 5. Probability of receiving any pay

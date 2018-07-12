@@ -18,3 +18,7 @@ The estimation component estimates a set of behavioral equations and calculate e
 ## 2. Simulation
 
 The simulation component uses the parameters derived from the estimation component to simulate the leave taking behavior of individuals within the ACS.
+
+- The `4.clean_ACS.py` file takes the raw ACS files in the `data` repository and creates the necessary variables to be consistent with the output from the estimation component and saves a master analysis data file called `ACS_cleaned_forsimulation.csv`.
+
+- The `5.simulate.py` file runs the simulation.
