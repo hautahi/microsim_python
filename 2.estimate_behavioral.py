@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import patsy
 from sklearn import linear_model
+import warnings
 
 # Define estimating function          
 def logit_fit(dic,conditional,weights,d,name):
@@ -41,13 +42,20 @@ def logit_fit(dic,conditional,weights,d,name):
             w = d1[wt][X.index]
         
         # Run Logit Equation
-        clf = linear_model.LogisticRegression()
-        clf.fit(X, y, sample_weight = w)
+        # Adding conditions from 2a_CPS estimate behaviors that corrected regressions there
+        clf = linear_model.LogisticRegression(solver='newton-cg', C=99999999, fit_intercept=False)
+        
+        # suppressing warnings generated from this, not concerning when we are just 
+        # looking for absolute replication of ACM at this point
+        warnings.filterwarnings("ignore")
+        clf.fit(X, y.values.ravel(), sample_weight = w)
+        warnings.filterwarnings("default")
         
         # Save estimates to file
         co_names = [x.split(")")[0] for x in list(X)]
         co_names = [x.replace("C(","") for x in co_names]
         raw_data = {'var': co_names, 'est': clf.coef_[0]}
+        print(name, leavetype,raw_data)
         df = pd.DataFrame(raw_data, columns=['var', 'est'])
         df.to_csv("./estimates/"+name+ "_" +leavetype + '.csv',index=False,header=True)
 
@@ -291,3 +299,4 @@ weight = {"own": "fixed_weight",
 ######################
 # Ordinal Logit Regression Required Here!
 ######################
+
