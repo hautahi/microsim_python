@@ -147,6 +147,7 @@ d["weekly_earnings"] =
 d["coveligd"] = np.random.randint(2, size=d.shape[0])
 
 # adding in the prhourly worker imputation
+# Double checked C++ code, and confirmed this is how they did hourly worker imputation.
 hr_est=pd.read_csv('estimates/CPS_paid_hrly.csv').set_index('var').to_dict()['est']
 d['prhourly']=0
 for dem in hr_est.keys():
