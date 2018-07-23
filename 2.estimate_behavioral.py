@@ -300,3 +300,42 @@ weight = {"own": "fixed_weight",
 # Ordinal Logit Regression Required Here!
 ######################
 
+# ---------------------------------------------------------------
+# 9. Would take leave if pay available
+# ---------------------------------------------------------------
+# specifications
+specif = {"own":"unaffordable ~ lnfaminc",
+          "illspouse":"unaffordable ~ lnfaminc",
+          "illchild":  "unaffordable ~ lnfaminc",
+          "illparent":"unaffordable ~ lnfaminc",
+          "matdis":"unaffordable ~ lnfaminc",
+          "bond":"unaffordable ~ lnfaminc"}
+
+# subsetting data
+conditional = {"own": "d['need_own'] == 1",
+               "illspouse": "d['need_illspouse'] == 1",
+               "illchild": "d['need_illchild'] == 1",
+               "illparent": "d['need_illparent'] == 1",
+               "matdis": "d['need_matdis'] == 1",
+               "bond": "d['need_bond'] == 1"}
+
+# weights
+weight = {"own":"fixed_weight",
+          "illspouse":"fixed_weight",
+          "illchild": "fixed_weight",
+          "illparent":"fixed_weight",
+          "matdis":"fixed_weight",
+          "bond":"fixed_weight"}
+
+logit_fit(specif,conditional,weight,d,"unaffordable")
+
+# ---------------------------------------------------------------
+# 10. Taking multiple leaves (ordered logit)
+# ---------------------------------------------------------------
+
+######################
+# Ordinal Logit Regression Required Here!
+######################
+
+# Is there supposed to be an 11th regression here?  -Luke
+
