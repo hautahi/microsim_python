@@ -5,13 +5,14 @@ for behavioral estimation
 
 # Housekeeping
 import pandas as pd
+pd.set_option('display.max_columns', 999)
+pd.set_option('display.width', 200)
 import numpy as np
 
 # Read in FMLA data
-df = pd.read_csv("fmla_2012_employee_restrict_puf.csv")
+d = pd.read_csv("data/fmla_2012/fmla_2012_employee_restrict_puf.csv")
 
 # FMLA eligible worker
-d = df.copy()
 d['eligworker'] = np.where((d['E13']==1) & ((d['E14'] == 1) | ((d['E15_CAT'] >= 5) & (d['E15_CAT'] <= 8))), 1, 0)
 d['eligworker'] = np.where((np.isnan(d['E13'])) & (np.isnan(d['E14'])) & (np.isnan(d['E15_CAT'])), np.nan,d['eligworker'])
 
@@ -37,12 +38,38 @@ d['hourly'] = np.where(np.isnan(d['E9_1']),np.nan,d['hourly'])
 d['union'] = np.where(d['D3']==1,1,0)
 d['union'] = np.where(np.isnan(d['D3']),np.nan,d['union'])
 
+# Employment Status
+d['employed'] = np.where(d['E1']==1, 1, 0)
+d['employed'] = np.where(np.isnan(d['E1']),np.nan,d['employed'])
+
+# Hours per week
+    # a dict to map code into average numeric hours per week
+dict_wkhours = {
+    1: 4,
+    2: 11.5,
+    3: 17,
+    4: 21.5,
+    5: 26.5,
+    6: 32,
+    7: 37.5,
+    8: 45,
+    'nan': np.nan
+}
+d['wkhours'] = d['E15_CAT_REV'].map(dict_wkhours)
+
+
+# Employment at government
+    # all rows should be valid for empgov_[] indicators, given FMLA sample
+d['empgov_fed'] = np.where(d['D2']==1, 1, 0)
+d['empgov_st'] = np.where(d['D2']==2, 1, 0)
+d['empgov_loc'] = np.where(d['D2']==3, 1, 0)
+
 # Age at midpoint of category
-conditions = [(df['AGE_CAT'] == 1),(df['AGE_CAT'] == 2),
-              (df['AGE_CAT'] == 3),(df['AGE_CAT'] == 4),
-              (df['AGE_CAT'] == 5),(df['AGE_CAT'] == 6),
-              (df['AGE_CAT'] == 7),(df['AGE_CAT'] == 8),
-              (df['AGE_CAT'] == 9),(df['AGE_CAT'] == 10)]
+conditions = [(d['AGE_CAT'] == 1),(d['AGE_CAT'] == 2),
+              (d['AGE_CAT'] == 3),(d['AGE_CAT'] == 4),
+              (d['AGE_CAT'] == 5),(d['AGE_CAT'] == 6),
+              (d['AGE_CAT'] == 7),(d['AGE_CAT'] == 8),
+              (d['AGE_CAT'] == 9),(d['AGE_CAT'] == 10)]
 choices = [21,27,32,37,42,47,52,57,63.5,70]
 d['age']   = np.select(conditions, choices, default=np.nan)
 d['agesq'] = np.array(d['age'])**2
@@ -54,6 +81,10 @@ d['female'] = np.where(d['GENDER_CAT']==2,1,0)
 # No children
 d['nochildren'] = np.where(d['D7_CAT']==0,1,0)
 d['nochildren'] = np.where(np.isnan(d['D7_CAT']),np.nan,d['nochildren'])
+
+# Number of dependents
+d['ndep_kid'] = d.D7_CAT
+d['ndep_old'] = d.D8_CAT
 
 # Educational level
 d['ltHS'] = np.where(d['D1_CAT']==1,1,0)
@@ -81,10 +112,10 @@ d['BAplus'] = np.where((d['BA']==1) | (d['GradSch']==1),1,0)
 d['BAplus'] = np.where(np.isnan(d['BA']) & np.isnan(d['GradSch']),np.nan,d['BAplus'])
 
 # Family income using midpoint of category
-conditions = [(df['D4_CAT'] == 3),(df['D4_CAT'] == 4),
-              (df['D4_CAT'] == 5),(df['D4_CAT'] == 6),
-              (df['D4_CAT'] == 7),(df['D4_CAT'] == 8),
-              (df['D4_CAT'] == 9),(df['D4_CAT'] == 10)]
+conditions = [(d['D4_CAT'] == 3),(d['D4_CAT'] == 4),
+              (d['D4_CAT'] == 5),(d['D4_CAT'] == 6),
+              (d['D4_CAT'] == 7),(d['D4_CAT'] == 8),
+              (d['D4_CAT'] == 9),(d['D4_CAT'] == 10)]
 choices = [15,25,32.5,37.5,45,62.5,87.5,130]
 d['faminc'] = np.select(conditions, choices, default=np.nan)
 d['lnfaminc'] = np.log(d['faminc'])
@@ -279,4 +310,4 @@ d['type_illparent'] = np.where((d['take_illparent']==1) | (d['need_illparent']==
 d['type_illparent'] = np.where(np.isnan(d['take_illparent']) | np.isnan(d['need_illparent']),np.nan,d['type_illparent'])
 
 # Save data
-d.to_csv("fmla_clean_2012.csv", index=False, header=True)
+d.to_csv("data/fmla_clean_2012.csv", index=False, header=True)
