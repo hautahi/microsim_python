@@ -7,6 +7,11 @@ to do:
 3. Need to compute counterfactual 'length' of leave for FMLA samples under new program
 
 Chris Zhang 9/13/2018
+
+Adding in some code here as an example of how github works.
+
+x = 5
+y= x ** 4
 '''
 
 import pandas as pd
