@@ -8,71 +8,106 @@ can use California data (with current replacement > 0) to calibrate
 Chris Zhang 9/20/2018
 '''
 
+# -------------
+# Housekeeping
+# -------------
+
 import pandas as pd
 pd.set_option('display.max_columns', 999)
 pd.set_option('display.width', 200)
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 
-# a function to prepare data
+# -------------
+# Function to create an indicator variable of those that would change leave behaviour
+# in presence of a new program.
+# -------------
+
 def set_data(df):
     '''
-
-    :param df: fmla_clean_2012.csv
-    :return:
+    This function adds a column to fmla data that indicates whether leave behavior
+    would change
+    input:  dataframe of cleaned fmla data
+    output: same dataframe with 'resp_len' variable and a subset of it. Chris can you explain this better?
     '''
-    ## Set index to uniquely identify workers
+     
+    # Set index to uniquely identify workers
     df = df.set_index('empid')
 
-    ## fillna for current leave length
+    # fillna for current leave length (this still leaves some NA's. For eg. LEAVE_CAT=2,3)
     df['length'] = df[['LEAVE_CAT', 'length']].groupby('LEAVE_CAT').transform(lambda x: x.fillna(x.mean()))
 
-    ## Consider a program which increases wage replacement
-        # a column to flag 0/1 for any response with increase in leave length
+    # -------------
+    # The rest of the code in this function creates a variable 'resp_len' 
+    # which will flag 0/1 for a worker that is likely to a more favourable leave program
+    # by increasing leave length. It is used to help simulate counterfactual leave
+    # for a program that increases wage replacement
+    # -------------
+
+    # Initiate
     df['resp_len'] = np.nan
-        # LEAVE_CAT: employed only
+        
+    # LEAVE_CAT: employed only (what is the reasoning here?)
     df.loc[df['LEAVE_CAT']==3, 'resp_len'] = 0
-        # A55: would take longer if paid?
+
+    # A55 asks if worker would take longer leave if paid?
     df.loc[(df['resp_len'].isna()) & (df['A55']==2), 'resp_len'] = 0
     df.loc[(df['resp_len'].isna()) & (df['A55']==1), 'resp_len'] = 1
-        # A23c: unable to afford unpaid leave due to leave taking
-        # A53g: cut leave time short to cover lost wages
-        # A62a: return to work because cannot afford more leaves
-        # B15_1_CAT, B15_2_CAT: can't afford unpaid leave
+    
+    # The following variables indicate whether leave was cut short for financial issues
+    # A23c: unable to afford unpaid leave due to leave taking
+    # A53g: cut leave time short to cover lost wages
+    # A62a: return to work because cannot afford more leaves
+    # B15_1_CAT, B15_2_CAT: can't afford unpaid leave
     df.loc[(df['resp_len'].isna()) & ((df['A23c']==1) |
                                (df['A53g']==1) |
                                (df['A62a']==1) |
                                (df['B15_1_CAT']==5) |
                                (df['B15_2_CAT']==5)), 'resp_len'] = 1
-        # A10_1, A10_2: regular/ongoing condition, takers and dual
-        # B11_1, B11_2: regular/ongoing condition, needers and dual
+    
+    # Chris, can you explain this?
+    # A10_1, A10_2: regular/ongoing condition, takers and dual
+    # B11_1, B11_2: regular/ongoing condition, needers and dual
     df.loc[(df['resp_len'].isna()) & (df['A10_1']==2) | (df['A10_1']==3)
            | (df['B11_1']==2) | (df['B11_1']==3), 'resp_len'] = 1
-        # Check reasons of no leave among rest: df[df['resp_len'].isna()].B15_1_CAT.value_counts().sort_index()
-        # all reasons unsolved by replacement generosity
+    
+    # Same here please Chris
+    # Check reasons of no leave among rest: df[df['resp_len'].isna()].B15_1_CAT.value_counts().sort_index()
+    # all reasons unsolved by replacement generosity
     df.loc[(df['resp_len'].isna()) & (df['B15_1_CAT'].notna()), 'resp_len'] = 0
     df.loc[(df['resp_len'].isna()) & (df['B15_2_CAT'].notna()), 'resp_len'] = 0
-        # Check LEAVE_CAT of rest: df[df['resp_len'].isna()]['LEAVE_CAT'].value_counts().sort_index()
-        # 267 takers and 3 needers
-        # with no evidence in data of need solvable / unsolvable by $, assume solvable to be conservative
+    
+    # Check LEAVE_CAT of rest: df[df['resp_len'].isna()]['LEAVE_CAT'].value_counts().sort_index()
+    # 267 takers and 3 needers
+    # with no evidence in data of need solvable / unsolvable by $, assume solvable to be conservative
     df.loc[df['resp_len'].isna(), 'resp_len'] = 1
-    # print(df.resp_len.isna().value_counts())
 
-    # Pool of workers with 'length' not limited by replacement
+    # Pool of workers with 'length' not limited by replacement.
+    # Chris, would it be better to perform this subsetting in get_resp_length()?
     pool = df[(df['resp_len']==0) & (df.length>0)] # pool size = 262 workers
-    # Workers with + response, current length known?
-    # print(df[df['resp_len']==1].length.isna().value_counts()) # 1037 known, 170 missing
 
-    return df, pool
+    return(df, pool)
 
-# a function to get weighted mean using v-w columns
+# -------------
+# Function to get weighted mean using v-w columns
+# Chris, we should discuss whether using means in this way is the correct way. I have no idea.
+# Also, can this be done in the scikit-learn class?
+# -------------
+
 def get_wm_col(df, vws):
-    num = pd.Series(np.zeros(len(df)))
-    denom = pd.Series(np.zeros(len(df)))
-    for v, w in vws:  # vws is list of var-weight tuples [('v0', 'w0'),...]
+    """
+    Function to create weighted mean of a variable based on the number of nearest neighbors.
+    """
+
+    # Initialize
+    num,  denom = pd.Series(np.zeros(len(df))), pd.Series(np.zeros(len(df)))
+
+    # Loop over list of var-weight tuples [('v0','w0'),...]
+    for v, w in vws:  
         num += df[v] * df[w]
         denom += df[w]
-    return num / denom
+    
+    return(num / denom)
 
 
 # a function to fillna using knn
@@ -139,32 +174,57 @@ def fillna_knn(k, d0, d1, df, ixlabel, cols, v, w, vout):
     # d01 = d0.append(d1nn)
     return d1nn
 
-def get_resp_length(df, pool, params):
-    # unpack knn parameters
+# -------------
+# Get the counterfactual length of leave that would be taken by those
+# who were deemed responsive to the new leave schedule
+# -------------
+
+def get_resp_length(df, pool, params): # Chris, want to consider creating pool in this function?
+    
+    # Unpack parameters
     k, cols, ixlabel, v, w, vout = params
 
-    # For workers with no response (interior solns), set resp_length = length
+    # For workers predicted to have no response to a leave program (interior solns), set resp_length = length
     wkrs_noResp = df[df['resp_len']==0]
     wkrs_noResp['resp_length'] = wkrs_noResp['length']
-        # up to here, some interior-soln workers did not report length, they are EMPLOYED ONLY, no need
-        # set resp_length = 0
+    
+    # up to here, some interior-soln workers did not report length, they are EMPLOYED ONLY, no need
+    # set resp_length = 0. Chris, do we need to check for LEAVE_CAT = 2 as well?
     wkrs_noResp.loc[wkrs_noResp['LEAVE_CAT']==3, 'resp_length'] = 0
 
     # For responsive workers with known length, estimate length from pool of workers with greater length
+
+    # Initialize
+    rwkrs_0nn, wkrs_rnn_len  = [], pd.DataFrame([])  # list of resp wkrs with no nns, e.g. those with max leave length in entire sample
+    
+    # Loop over all responsive workers with known length
     resp_wkrs = df[(df['resp_len']==1) & (df['length'].notna())]
-    rwkrs_0nn = [] # list of resp wkrs with no nns, e.g. those with max leave length in entire sample
-    wkrs_rnn_len = pd.DataFrame([])
-    for row in range(len(resp_wkrs)):
-        d1 = resp_wkrs[row:(row+1)] # pick a responsive worker
-        wid = d1.index[0] # empid of responsive worker
-        l = list(d1['length'])[0] # length of this worker's leave taken
-        d0 = pool[pool['length'] > l] # eligible pool of nns are those with greater leave lengths
+    for row in range(len(resp_wkrs)):  # Chris, it's probably quicker and cleaner to use the .iterrows() method here
+        
+        # Get a repsonsive worker
+        d1 = resp_wkrs[row:(row+1)]
+       
+        # Get id of worker
+        wid = d1.index[0]
+
+        # Get length of leave of worker
+        l = list(d1['length'])[0]
+        
+        # Take dataframe of individuals where the length of their leave is greater than this worker
+        # and who were not forced to take shorter leave
+        d0 = pool[pool['length'] > l]
+        
+        # Check whether there are enough relevant people to run knn
         if len(d0) >=k:
+
             # use kNN to estimate conditional length
             d1nn = fillna_knn(k, d0, d1, df, ixlabel, cols, v, w, vout)
             print('---- d1nn filled in for empid = %s, row %s-th done' % (wid, row))
+            
             wkrs_rnn_len = wkrs_rnn_len.append(d1nn)
+        
         else: # if not enough (less than k) leave takers with greater length in poolw
+            
             rwkrs_0nn.append(wid)
             print('---->>> empid = %s has large leave length, insufficient eligible neighbors in pool, empid recorded to rwkrs_0nn' % wid)
 
@@ -186,43 +246,49 @@ def get_resp_length(df, pool, params):
 
     return dfr
 
-# a function to get parameters
+# -------------
+# Function to fetch the parameters
+# Chris, we'll eventually change this to either a class or a command line input
+# -------------
+
 def get_params():
-    k = 2 # k of kNN
-    cols = ['age',
-            'male',
-            'employed',
-            'wkhours',
-            'noHSdegree', 'BAplus',
+    
+    # Number of nearest neighbors
+    k = 2
+
+    cols = ['age','male','employed',
+            'wkhours','noHSdegree', 'BAplus',
             'empgov_fed', 'empgov_st', 'empgov_loc',
-            'lnfaminc',
-            'black', 'asian', 'hisp', 'other',
+            'lnfaminc','black', 'asian', 'hisp', 'other',
             'ndep_kid', 'ndep_old',
             'nevermarried', 'partner', 'widowed', 'divorced', 'separated']
+
     ixlabel = 'empid'
     v =  'length'
     w =  'freq_weight'
     vout = 'resp_length'
     params = (k, cols, ixlabel, v, w, vout)
-    return params
+    return(params)
 
+# -------------
 # Get response
-def get_response():
-    df = pd.read_csv('./data/fmla_clean_2012.csv')
-    df, pool = set_data(df) # Set data: df, pool
+# -------------
+
+def get_response(outname='./data/fmla_clean_2012_resp_length.csv',fname = './data/fmla_clean_2012.csv'):
+    """
+    Function 
+    """
+
+    # Read FMLA data
+    df = pd.read_csv(fname)
+
+    # Get data with added 'resp_len' variable
+    df, pool = set_data(df)
+    
+    # Fetch parameters
     params = get_params()
+    
+    # 
     dfr = get_resp_length(df, pool, params) # resulting df for all FMLA workers with response length generated
-    dfr.to_csv('./data/fmla_clean_2012_resp_length.csv', index=False)
-    return None
-
-# get_response()
-
-'''
-# some checking
-for d in ds:
-    print(d.resp_length.isna().value_counts())
-
-print('dfr length mean = \n', dfr.length.mean())
-print('dfr resp_length mean = \n', dfr.resp_length.mean())
-'''
-
+    
+    dfr.to_csv(outname, index=False)
